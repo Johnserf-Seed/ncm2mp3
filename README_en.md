@@ -156,6 +156,34 @@ ncm2mp3 ./ncm_library -r -t "{artist}/{album}/{title}" --dry-run
 
 Prints each output path without writing anything.
 
+### Configuration file
+
+Persist common defaults to a TOML file instead of retyping flags every
+invocation. Default paths:
+
+- Linux / macOS: `~/.config/ncm2mp3/config.toml`
+- Windows: `%APPDATA%\ncm2mp3\config.toml`
+
+Example:
+
+```toml
+# ~/.config/ncm2mp3/config.toml
+template = "{artist}/{album}/{title}"
+output = "/music/library"
+jobs = 8
+folder = true
+on_conflict = "rename"   # skip (default) / overwrite / rename
+recursive = true
+format = ["mp3", "flac"]
+```
+
+**Precedence**: command-line arguments > config file > built-in defaults.
+If the config sets `jobs = 8` and you pass `-j 4`, the final value is 4.
+
+**Other flags**:
+- `--config <path>`: load from this TOML file (overrides the default location)
+- `--no-config`: skip config loading entirely — use only CLI args + defaults
+
 ### Language
 
 ```bash

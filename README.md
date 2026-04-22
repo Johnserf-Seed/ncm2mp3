@@ -156,6 +156,33 @@ ncm2mp3 ./ncm_library -r -t "{artist}/{album}/{title}" --dry-run
 
 只打印每个文件会生成的输出路径，不写盘。
 
+### 配置文件
+
+常用默认值可以写到 TOML 配置，省得每次都重复敲一长串参数。默认路径：
+
+- Linux / macOS: `~/.config/ncm2mp3/config.toml`
+- Windows: `%APPDATA%\ncm2mp3\config.toml`
+
+示例：
+
+```toml
+# ~/.config/ncm2mp3/config.toml
+template = "{artist}/{album}/{title}"
+output = "/music/library"
+jobs = 8
+folder = true
+on_conflict = "rename"   # skip（默认） / overwrite / rename
+recursive = true
+format = ["mp3", "flac"]
+```
+
+**优先级**：命令行参数 > 配置文件 > 内置默认值。配置里设了 `jobs = 8`，
+命令行传 `-j 4`，最终用 4。
+
+**其他标志**：
+- `--config <path>`：从指定 TOML 文件加载（覆盖默认位置）
+- `--no-config`：完全跳过配置文件，仅用命令行 + 默认值
+
 ### 语言设置
 
 ```bash

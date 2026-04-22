@@ -1,4 +1,5 @@
 mod cli;
+mod config;
 mod cover;
 mod i18n;
 mod info;
@@ -47,7 +48,19 @@ fn main() -> Result<()> {
         }
         CliCommand::Info(args) => info::run(&args)?,
         CliCommand::Cover(args) => cover::run(&args)?,
-        CliCommand::Decrypt(args) => {
+        CliCommand::Decrypt(mut args) => {
+            // Merge in config file settings. Command-line flags already in
+            // `args` take priority; config fills in the gaps. `--no-config`
+            // or `--config <path>` on the CLI decides which file to load.
+            if !args.no_config {
+                let file_cfg = if let Some(explicit) = args.config_path.clone() {
+                    config::load_from(&explicit)?
+                } else {
+                    config::load_default_if_present()?
+                };
+                cli::merge_config(&mut args, &matches, &file_cfg);
+            }
+
             let summary = pipeline::run(&args)?;
             print_summary(&summary);
             if summary.failed > 0 {

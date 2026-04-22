@@ -61,6 +61,11 @@ pub struct Cli {
     pub on_conflict: ConflictStrategy,
     pub dry_run: bool,
     pub verbose: u8,
+    /// Explicit override of config file location; when `None`, the default
+    /// platform path is consulted.
+    pub config_path: Option<PathBuf>,
+    /// `--no-config` skips config-file loading entirely.
+    pub no_config: bool,
     /// Retained for diagnostics and future locale-aware logic.
     #[allow(dead_code)]
     pub lang: Lang,
@@ -186,6 +191,20 @@ pub fn build_command(s: &'static Strings) -> Command {
                 .long("overwrite")
                 .help(s.arg_overwrite)
                 .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("config")
+                .long("config")
+                .value_name(s.val_path)
+                .help(s.arg_config)
+                .value_parser(clap::value_parser!(PathBuf)),
+        )
+        .arg(
+            Arg::new("no-config")
+                .long("no-config")
+                .help(s.arg_no_config)
+                .action(ArgAction::SetTrue)
+                .conflicts_with("config"),
         )
         .arg(
             Arg::new("dry-run")
@@ -335,6 +354,70 @@ fn cli_from_matches(matches: &ArgMatches, lang: Lang) -> Cli {
         on_conflict,
         dry_run: matches.get_flag("dry-run"),
         verbose: matches.get_count("verbose"),
+        config_path: matches.get_one::<PathBuf>("config").cloned(),
+        no_config: matches.get_flag("no-config"),
         lang,
+    }
+}
+
+/// Merge a [`FileConfig`] into an existing [`Cli`], respecting the
+/// **command line > config file > default** precedence. Only fields that
+/// weren't already set on the command line are filled in.
+///
+/// For clap boolean flags we can't tell "omitted" from "explicitly set to
+/// false" — we use [`ArgMatches::value_source`] to distinguish. When a flag
+/// is [`clap::parser::ValueSource::DefaultValue`] (i.e. the user did NOT
+/// pass it), the config value wins.
+pub fn merge_config(cli: &mut Cli, matches: &ArgMatches, config: &crate::config::FileConfig) {
+    use clap::parser::ValueSource::CommandLine;
+
+    fn cli_provided(matches: &ArgMatches, id: &str) -> bool {
+        matches
+            .value_source(id)
+            .map(|s| s == CommandLine)
+            .unwrap_or(false)
+    }
+
+    if !cli_provided(matches, "template") {
+        if let Some(t) = &config.template {
+            cli.template = Some(t.clone());
+        }
+    }
+    if !cli_provided(matches, "output") {
+        if let Some(o) = &config.output {
+            cli.output = Some(o.clone());
+        }
+    }
+    if !cli_provided(matches, "jobs") {
+        if let Some(j) = config.jobs {
+            cli.jobs = Some(j);
+        }
+    }
+    if !cli_provided(matches, "folder") {
+        if let Some(true) = config.folder {
+            cli.folder = true;
+        }
+    }
+    if !cli_provided(matches, "no-tag") {
+        if let Some(true) = config.no_tag {
+            cli.no_tag = true;
+        }
+    }
+    if !cli_provided(matches, "recursive") {
+        if let Some(true) = config.recursive {
+            cli.recursive = true;
+        }
+    }
+    if !cli_provided(matches, "on-conflict") && !cli_provided(matches, "overwrite") {
+        if let Some(raw) = &config.on_conflict {
+            if let Some(strategy) = ConflictStrategy::parse(raw) {
+                cli.on_conflict = strategy;
+            }
+        }
+    }
+    if !cli_provided(matches, "format") {
+        if let Some(fmts) = &config.format {
+            cli.format = fmts.clone();
+        }
     }
 }
