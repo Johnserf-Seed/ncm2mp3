@@ -194,7 +194,11 @@ impl Lang {
     pub fn parse(raw: &str) -> Option<Self> {
         let lower = raw.trim().to_ascii_lowercase();
         // Accept common spellings: en / english / zh / zh-cn / zh_CN / cn / chinese
-        if lower == "en" || lower.starts_with("en-") || lower.starts_with("en_") || lower == "english" {
+        if lower == "en"
+            || lower.starts_with("en-")
+            || lower.starts_with("en_")
+            || lower == "english"
+        {
             return Some(Lang::En);
         }
         if lower == "zh"

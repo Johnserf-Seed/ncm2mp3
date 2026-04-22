@@ -35,6 +35,19 @@ $ ncm2mp3 "范玮琪,张韶涵 - 如果的事.ncm"
 
 ## 安装
 
+### 下载预编译二进制（最简单）
+
+到 [Releases 页面](https://github.com/JohnserfSeed/ncm2mp3/releases) 下载对应你平台的压缩包：
+
+- `ncm2mp3-vX.Y.Z-x86_64-pc-windows-msvc.zip` — Windows 64 位
+- `ncm2mp3-vX.Y.Z-aarch64-pc-windows-msvc.zip` — Windows ARM64
+- `ncm2mp3-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` — Linux x86_64
+- `ncm2mp3-vX.Y.Z-aarch64-unknown-linux-gnu.tar.gz` — Linux ARM64
+- `ncm2mp3-vX.Y.Z-x86_64-apple-darwin.tar.gz` — macOS Intel
+- `ncm2mp3-vX.Y.Z-aarch64-apple-darwin.tar.gz` — macOS Apple Silicon
+
+解压后把 `ncm2mp3(.exe)` 放到 PATH 里任意目录。
+
 ### 从源码编译
 
 需要 [Rust 工具链](https://rustup.rs/)（1.75+）。

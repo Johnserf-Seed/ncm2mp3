@@ -21,9 +21,7 @@ impl NcmStreamCipher {
 
         let mut j: u8 = 0;
         for i in 0..S_BOX_SIZE {
-            j = j
-                .wrapping_add(s_box[i])
-                .wrapping_add(key[i % key.len()]);
+            j = j.wrapping_add(s_box[i]).wrapping_add(key[i % key.len()]);
             s_box.swap(i, j as usize);
         }
 

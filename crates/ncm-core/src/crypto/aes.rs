@@ -26,8 +26,7 @@ mod tests {
         let key = *b"YELLOW SUBMARINE";
         let plaintext = b"Hello NCM world, this spans multiple AES blocks.";
 
-        let ciphertext = Aes128EcbEnc::new(&key.into())
-            .encrypt_padded_vec_mut::<Pkcs7>(plaintext);
+        let ciphertext = Aes128EcbEnc::new(&key.into()).encrypt_padded_vec_mut::<Pkcs7>(plaintext);
         let decrypted = aes128_ecb_decrypt(&key, &ciphertext).unwrap();
 
         assert_eq!(decrypted, plaintext);

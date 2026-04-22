@@ -155,7 +155,10 @@ mod tests {
 
     #[test]
     fn detect_jpeg() {
-        assert_eq!(CoverMime::detect(&[0xFF, 0xD8, 0xFF, 0xE0]), CoverMime::Jpeg);
+        assert_eq!(
+            CoverMime::detect(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            CoverMime::Jpeg
+        );
     }
 
     #[test]

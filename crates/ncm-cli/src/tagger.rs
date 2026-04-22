@@ -10,11 +10,7 @@ use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::tag::{Accessor, Tag};
 use ncm_core::{Cover, CoverMime, NcmMetadata};
 
-pub fn write_tags(
-    path: &Path,
-    metadata: &NcmMetadata,
-    cover: Option<&Cover>,
-) -> Result<()> {
+pub fn write_tags(path: &Path, metadata: &NcmMetadata, cover: Option<&Cover>) -> Result<()> {
     let mut tagged = lofty::read_from_path(path)
         .with_context(|| format!("failed to read {} for tagging", path.display()))?;
 

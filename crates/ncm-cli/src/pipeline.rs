@@ -51,8 +51,9 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
     let pool = thread_pool(args.jobs)?;
 
     pool.install(|| {
-        files.par_iter().for_each(|input| {
-            match process_one(input, args) {
+        files
+            .par_iter()
+            .for_each(|input| match process_one(input, args) {
                 Ok(Outcome::Written(path)) => {
                     ok.fetch_add(1, Ordering::Relaxed);
                     eprintln!(
@@ -64,11 +65,7 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
                 }
                 Ok(Outcome::Skipped(reason)) => {
                     skipped.fetch_add(1, Ordering::Relaxed);
-                    eprintln!(
-                        "{} {}  ({reason})",
-                        style("·").yellow(),
-                        input.display()
-                    );
+                    eprintln!("{} {}  ({reason})", style("·").yellow(), input.display());
                 }
                 Ok(Outcome::DryRun(path)) => {
                     ok.fetch_add(1, Ordering::Relaxed);
@@ -81,14 +78,9 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
                 }
                 Err(e) => {
                     failed.fetch_add(1, Ordering::Relaxed);
-                    eprintln!(
-                        "{} {}: {e:#}",
-                        style("✗").red().bold(),
-                        input.display()
-                    );
+                    eprintln!("{} {}: {e:#}", style("✗").red().bold(), input.display());
                 }
-            }
-        });
+            });
     });
 
     Ok(RunSummary {
@@ -106,9 +98,7 @@ fn thread_pool(jobs: Option<usize>) -> Result<rayon::ThreadPool> {
         }
         builder = builder.num_threads(n);
     }
-    builder
-        .build()
-        .context("failed to build rayon thread pool")
+    builder.build().context("failed to build rayon thread pool")
 }
 
 fn collect_inputs(input: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
@@ -149,8 +139,8 @@ enum Outcome {
 }
 
 fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
-    let (mut decoder, headers) = NcmDecoder::open(input)
-        .with_context(|| format!("failed to parse {}", input.display()))?;
+    let (mut decoder, headers) =
+        NcmDecoder::open(input).with_context(|| format!("failed to parse {}", input.display()))?;
 
     let format = headers.effective_format();
 
@@ -203,7 +193,10 @@ fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
     if args.folder {
         if let Some(cover) = headers.cover.as_ref() {
             if let Err(e) = write_cover_file(&out_path, cover) {
-                log::warn!("failed to write external cover next to {}: {e:#}", out_path.display());
+                log::warn!(
+                    "failed to write external cover next to {}: {e:#}",
+                    out_path.display()
+                );
             }
         }
     }
@@ -230,9 +223,7 @@ fn write_cover_file(audio_path: &Path, cover: &Cover) -> Result<()> {
 }
 
 fn format_matches(filter: &[String], format: AudioFormat) -> bool {
-    filter
-        .iter()
-        .any(|f| AudioFormat::from_hint(f) == format)
+    filter.iter().any(|f| AudioFormat::from_hint(f) == format)
 }
 
 fn build_output_path(

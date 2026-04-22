@@ -35,6 +35,19 @@ Done: 1 ok, 0 skipped, 0 failed
 
 ## Install
 
+### Download a prebuilt binary (easiest)
+
+Grab the archive for your platform from the [Releases page](https://github.com/JohnserfSeed/ncm2mp3/releases):
+
+- `ncm2mp3-vX.Y.Z-x86_64-pc-windows-msvc.zip` — Windows 64-bit
+- `ncm2mp3-vX.Y.Z-aarch64-pc-windows-msvc.zip` — Windows ARM64
+- `ncm2mp3-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` — Linux x86_64
+- `ncm2mp3-vX.Y.Z-aarch64-unknown-linux-gnu.tar.gz` — Linux ARM64
+- `ncm2mp3-vX.Y.Z-x86_64-apple-darwin.tar.gz` — macOS Intel
+- `ncm2mp3-vX.Y.Z-aarch64-apple-darwin.tar.gz` — macOS Apple Silicon
+
+Extract and drop `ncm2mp3(.exe)` somewhere on your PATH.
+
 ### Build from source
 
 Requires the [Rust toolchain](https://rustup.rs/) (1.75+).

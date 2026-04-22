@@ -32,11 +32,7 @@ pub fn run(args: &InfoArgs) -> Result<()> {
         }
         match print_one(path) {
             Ok(()) => {}
-            Err(e) => eprintln!(
-                "{} {}: {e:#}",
-                style("✗").red().bold(),
-                path.display()
-            ),
+            Err(e) => eprintln!("{} {}: {e:#}", style("✗").red().bold(), path.display()),
         }
     }
 
@@ -73,8 +69,8 @@ fn has_ncm_extension(path: &Path) -> bool {
 }
 
 fn print_one(path: &Path) -> Result<()> {
-    let (_decoder, headers) = NcmDecoder::open(path)
-        .with_context(|| format!("failed to parse {}", path.display()))?;
+    let (_decoder, headers) =
+        NcmDecoder::open(path).with_context(|| format!("failed to parse {}", path.display()))?;
 
     let file_size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     for (label, value) in build_rows(path, file_size, &headers) {
@@ -100,7 +96,10 @@ fn build_rows(path: &Path, file_size: u64, headers: &NcmHeaders) -> Vec<(&'stati
         rows.push((s.info_duration, format_duration(d)));
     }
     rows.push((s.info_title, or_none(&headers.metadata.title)));
-    rows.push((s.info_artist, or_none(&headers.metadata.artists_joined(", "))));
+    rows.push((
+        s.info_artist,
+        or_none(&headers.metadata.artists_joined(", ")),
+    ));
     rows.push((s.info_album, or_none(&headers.metadata.album)));
     rows.push((
         s.info_cover,
@@ -138,11 +137,7 @@ fn format_detected_format(effective: AudioFormat, declared: AudioFormat) -> Stri
     // Surface a mismatch between sniffed and declared only when the
     // declared hint is actually meaningful (not Unknown) and differs.
     if declared != AudioFormat::Unknown && declared != effective {
-        format!(
-            "{} (declared: {})",
-            eff_name,
-            audio_format_name(declared)
-        )
+        format!("{} (declared: {})", eff_name, audio_format_name(declared))
     } else {
         eff_name.to_string()
     }

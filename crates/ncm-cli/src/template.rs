@@ -34,11 +34,7 @@ fn sanitize(value: &str) -> String {
 }
 
 /// Render the filename stem (no extension) from the template and metadata.
-pub fn render_stem(
-    template: &str,
-    metadata: &NcmMetadata,
-    format: AudioFormat,
-) -> Result<String> {
+pub fn render_stem(template: &str, metadata: &NcmMetadata, format: AudioFormat) -> Result<String> {
     let mut vars: HashMap<String, String> = HashMap::new();
 
     let artist = if metadata.artists.is_empty() {
