@@ -4,6 +4,12 @@
 
 A Rust CLI that decrypts Netease Cloud Music `.ncm` files back into their original audio (MP3 / FLAC / M4A …), with tags, cover art, parallel batching, and bilingual EN/ZH UI.
 
+<!-- To re-record this demo, see docs/demo.tape (a vhs script). -->
+<!-- Once docs/demo.gif exists, uncomment the line below. -->
+<!-- ![Demo](./docs/demo.gif) -->
+
+**Inspect metadata (no decryption)**:
+
 ```console
 $ ncm2mp3 info "范玮琪,张韶涵 - 如果的事.ncm"
 File: 范玮琪,张韶涵 - 如果的事.ncm
@@ -15,10 +21,36 @@ Title: 如果的事
 Artist: 范玮琪, 张韶涵
 Album: Faces Of FanFan
 Cover: PNG, 736.62 KB
+```
 
+**Single file** (default: preserves input filename):
+
+```console
 $ ncm2mp3 "范玮琪,张韶涵 - 如果的事.ncm"
 ✓ 范玮琪,张韶涵 - 如果的事.ncm -> 范玮琪,张韶涵 - 如果的事.mp3
 Done: 1 ok, 0 skipped, 0 failed
+```
+
+**Batch decrypt an entire directory** (colored per-file status + count summary):
+
+```console
+$ ncm2mp3 ./ncm_library -r -j 8
+✓ dkj - Aces.ncm -> dkj - Aces.mp3
+✓ emovo - 红.ncm -> emovo - 红.mp3
+· Gareth.T - 遇上你之前的我.ncm  (output exists: …mp3)
+✗ bogus.ncm: failed to parse …: invalid NCM magic header (expected CTENFDAM)
+Done: 2 ok, 1 skipped, 1 failed
+```
+
+**Per-song folder + separate cover file** (`-F`):
+
+```console
+$ ncm2mp3 "如果的事.ncm" -o ./out -F
+$ tree ./out
+./out
+└── 如果的事/
+    ├── 如果的事.mp3     # Embedded ID3v2 tags + cover
+    └── cover.png        # Stand-alone cover file
 ```
 
 ## Features

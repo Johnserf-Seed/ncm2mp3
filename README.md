@@ -4,6 +4,12 @@
 
 一个用 Rust 写的命令行工具，把网易云音乐的 `.ncm` 加密文件还原成原始音频格式（MP3 / FLAC / M4A …），带标签、带封面、并行批处理、中英文界面。
 
+<!-- 如果你想重新录制这张演示 GIF，参见 docs/demo.tape（vhs 脚本）。 -->
+<!-- 录好放到 docs/demo.gif 后把下面这一行的注释去掉即可。 -->
+<!-- ![演示](./docs/demo.gif) -->
+
+**查看元数据（不解密）**：
+
 ```console
 $ ncm2mp3 info "范玮琪,张韶涵 - 如果的事.ncm"
 文件: 范玮琪,张韶涵 - 如果的事.ncm
@@ -15,10 +21,36 @@ $ ncm2mp3 info "范玮琪,张韶涵 - 如果的事.ncm"
 艺术家: 范玮琪, 张韶涵
 专辑: Faces Of FanFan
 封面: PNG, 736.62 KB
+```
 
+**单文件解密**（默认保留原始文件名）：
+
+```console
 $ ncm2mp3 "范玮琪,张韶涵 - 如果的事.ncm"
 ✓ 范玮琪,张韶涵 - 如果的事.ncm -> 范玮琪,张韶涵 - 如果的事.mp3
 完成：1 成功，0 跳过，0 失败
+```
+
+**批量解密整个目录**（彩色状态行 + 计数 summary）：
+
+```console
+$ ncm2mp3 ./ncm_library -r -j 8
+✓ dkj - Aces.ncm -> dkj - Aces.mp3
+✓ emovo - 红.ncm -> emovo - 红.mp3
+· Gareth.T - 遇上你之前的我.ncm  (output exists: …mp3)
+✗ bogus.ncm: failed to parse …: invalid NCM magic header (expected CTENFDAM)
+完成：2 成功，1 跳过，1 失败
+```
+
+**每首歌独立文件夹 + 单独封面文件**（`-F`）：
+
+```console
+$ ncm2mp3 "如果的事.ncm" -o ./out -F
+$ tree ./out
+./out
+└── 如果的事/
+    ├── 如果的事.mp3     # 内嵌 ID3v2 标签 + 封面
+    └── cover.png        # 单独导出的封面
 ```
 
 ## 功能特性
