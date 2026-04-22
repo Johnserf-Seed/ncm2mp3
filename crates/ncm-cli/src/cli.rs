@@ -1,10 +1,18 @@
 use std::path::PathBuf;
 
+use anyhow::{anyhow, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 
 use crate::i18n::{Lang, Strings};
 
-/// Parsed CLI arguments, flat struct preserved across the pipeline.
+/// Top-level dispatch: either the default "decrypt" flow (no subcommand),
+/// or a specialized mode invoked via subcommand.
+pub enum CliCommand {
+    Decrypt(Cli),
+    Info(InfoArgs),
+}
+
+/// Decrypt-mode arguments, flat struct preserved across the pipeline.
 #[derive(Debug, Clone)]
 pub struct Cli {
     pub input: PathBuf,
@@ -36,6 +44,13 @@ impl Cli {
     }
 }
 
+/// `info` subcommand args: inspect headers without decrypting audio.
+#[derive(Debug, Clone)]
+pub struct InfoArgs {
+    pub input: PathBuf,
+    pub recursive: bool,
+}
+
 /// Build the clap `Command` with help text from the chosen translation table.
 ///
 /// We use the builder API instead of `#[derive(Parser)]` because derive
@@ -46,6 +61,9 @@ pub fn build_command(s: &'static Strings) -> Command {
     Command::new("ncm2mp3")
         .version(env!("CARGO_PKG_VERSION"))
         .about(s.cli_about)
+        // Allow top-level positional INPUT to be skipped when a subcommand is
+        // invoked (e.g. `ncm2mp3 info song.ncm` doesn't need top-level INPUT).
+        .subcommand_negates_reqs(true)
         .arg(
             Arg::new("input")
                 .value_name(s.val_input)
@@ -132,10 +150,42 @@ pub fn build_command(s: &'static Strings) -> Command {
                 .env("NCM2MP3_LANG")
                 .value_parser(["en", "zh"]),
         )
+        .subcommand(
+            Command::new("info")
+                .about(s.cmd_info_about)
+                .arg(
+                    Arg::new("input")
+                        .value_name(s.val_input)
+                        .help(s.arg_info_input)
+                        .required(true)
+                        .value_parser(clap::value_parser!(PathBuf)),
+                )
+                .arg(
+                    Arg::new("recursive")
+                        .short('r')
+                        .long("recursive")
+                        .help(s.arg_recursive)
+                        .action(ArgAction::SetTrue),
+                ),
+        )
+}
+
+/// Dispatch parsed matches into the concrete command variant.
+pub fn parse(matches: &ArgMatches, lang: Lang) -> Result<CliCommand> {
+    match matches.subcommand() {
+        Some(("info", sub)) => Ok(CliCommand::Info(InfoArgs {
+            input: sub
+                .get_one::<PathBuf>("input")
+                .cloned()
+                .ok_or_else(|| anyhow!("info input is required"))?,
+            recursive: sub.get_flag("recursive"),
+        })),
+        _ => Ok(CliCommand::Decrypt(cli_from_matches(matches, lang))),
+    }
 }
 
 /// Convert matched args into the flat `Cli` struct used by the pipeline.
-pub fn cli_from_matches(matches: &ArgMatches, lang: Lang) -> Cli {
+fn cli_from_matches(matches: &ArgMatches, lang: Lang) -> Cli {
     let format = matches
         .get_many::<String>("format")
         .map(|vals| vals.cloned().collect())

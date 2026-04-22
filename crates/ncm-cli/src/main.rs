@@ -1,11 +1,13 @@
 mod cli;
 mod i18n;
+mod info;
 mod pipeline;
 mod tagger;
 mod template;
 
 use anyhow::Result;
 
+use crate::cli::CliCommand;
 use crate::i18n::{t, Lang};
 
 fn main() -> Result<()> {
@@ -15,27 +17,38 @@ fn main() -> Result<()> {
     i18n::init(lang.strings());
 
     let matches = cli::build_command(lang.strings()).get_matches();
-    let args = cli::cli_from_matches(&matches, lang);
+    let command = cli::parse(&matches, lang)?;
 
+    // Verbose level only affects the decrypt pipeline for now; info mode
+    // prints its own structured output and doesn't need log plumbing.
+    let verbose = match &command {
+        CliCommand::Decrypt(args) => args.log_level(),
+        CliCommand::Info(_) => log::LevelFilter::Warn,
+    };
     env_logger::Builder::new()
-        .filter_level(args.log_level())
+        .filter_level(verbose)
         .format_timestamp(None)
         .format_target(false)
         .init();
 
-    let summary = pipeline::run(&args)?;
+    match command {
+        CliCommand::Info(args) => info::run(&args)?,
+        CliCommand::Decrypt(args) => {
+            let summary = pipeline::run(&args)?;
 
-    let s = t();
-    eprintln!(
-        "\n{}",
-        s.msg_summary
-            .replace("{ok}", &summary.ok.to_string())
-            .replace("{skipped}", &summary.skipped.to_string())
-            .replace("{failed}", &summary.failed.to_string())
-    );
+            let s = t();
+            eprintln!(
+                "\n{}",
+                s.msg_summary
+                    .replace("{ok}", &summary.ok.to_string())
+                    .replace("{skipped}", &summary.skipped.to_string())
+                    .replace("{failed}", &summary.failed.to_string())
+            );
 
-    if summary.failed > 0 {
-        std::process::exit(1);
+            if summary.failed > 0 {
+                std::process::exit(1);
+            }
+        }
     }
 
     Ok(())

@@ -28,6 +28,22 @@ pub struct Strings {
     pub arg_verbose: &'static str,
     pub arg_lang: &'static str,
 
+    // --- Subcommand help ---
+    pub cmd_info_about: &'static str,
+    pub arg_info_input: &'static str,
+
+    // --- `info` mode labels ---
+    pub info_file: &'static str,
+    pub info_size: &'static str,
+    pub info_format: &'static str,
+    pub info_bitrate: &'static str,
+    pub info_duration: &'static str,
+    pub info_title: &'static str,
+    pub info_artist: &'static str,
+    pub info_album: &'static str,
+    pub info_cover: &'static str,
+    pub info_none: &'static str,
+
     // --- Value names (shown in usage, e.g. `--output <DIR>`) ---
     pub val_input: &'static str,
     pub val_dir: &'static str,
@@ -74,6 +90,20 @@ pub const EN: Strings = Strings {
     arg_verbose: "Increase log verbosity (-v for info, -vv for debug)",
     arg_lang: "UI language: en or zh (default: auto-detect from LANG/LC_ALL)",
 
+    cmd_info_about: "Inspect NCM file metadata without decrypting the audio",
+    arg_info_input: "Input .ncm file or a directory of .ncm files to inspect",
+
+    info_file: "File",
+    info_size: "Size",
+    info_format: "Format",
+    info_bitrate: "Bitrate",
+    info_duration: "Duration",
+    info_title: "Title",
+    info_artist: "Artist",
+    info_album: "Album",
+    info_cover: "Cover",
+    info_none: "(none)",
+
     val_input: "INPUT",
     val_dir: "DIR",
     val_template: "TEMPLATE",
@@ -109,6 +139,20 @@ pub const ZH: Strings = Strings {
     arg_dry_run: "仅打印将要执行的操作，不写入任何文件",
     arg_verbose: "增加日志详细度（-v 显示 info，-vv 显示 debug）",
     arg_lang: "界面语言：en 或 zh（默认：从 LANG/LC_ALL 自动检测）",
+
+    cmd_info_about: "查看 NCM 文件的元数据信息，不解密音频",
+    arg_info_input: "要检查的 .ncm 文件或包含 .ncm 文件的目录",
+
+    info_file: "文件",
+    info_size: "大小",
+    info_format: "格式",
+    info_bitrate: "码率",
+    info_duration: "时长",
+    info_title: "标题",
+    info_artist: "艺术家",
+    info_album: "专辑",
+    info_cover: "封面",
+    info_none: "(无)",
 
     val_input: "输入",
     val_dir: "目录",
