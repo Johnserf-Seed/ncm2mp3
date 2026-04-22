@@ -6,7 +6,7 @@ use std::io::Cursor;
 use aes::Aes128;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
-use cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyInit};
+use cipher::{block_padding::Pkcs7, BlockModeEncrypt, KeyInit};
 use ecb::Encryptor;
 
 use ncm_core::crypto::NcmStreamCipher;
@@ -19,7 +19,7 @@ use ncm_core::NcmDecoder;
 type Aes128EcbEnc = Encryptor<Aes128>;
 
 fn aes_encrypt(key: &[u8; 16], plaintext: &[u8]) -> Vec<u8> {
-    Aes128EcbEnc::new(key.into()).encrypt_padded_vec_mut::<Pkcs7>(plaintext)
+    Aes128EcbEnc::new(key.into()).encrypt_padded_vec::<Pkcs7>(plaintext)
 }
 
 fn build_synthetic_ncm(audio: &[u8], metadata_json: &str, cover: Option<&[u8]>) -> Vec<u8> {

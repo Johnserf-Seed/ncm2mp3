@@ -52,10 +52,12 @@ fn build_picture(cover: &Cover) -> Option<Picture> {
         CoverMime::Unknown => return None,
     };
 
-    Some(Picture::new_unchecked(
-        PictureType::CoverFront,
-        Some(mime),
-        None,
-        cover.data.clone(),
-    ))
+    // lofty 0.24 replaced `Picture::new_unchecked(...)` with a builder
+    // initiated by `Picture::unchecked(data)`.
+    Some(
+        Picture::unchecked(cover.data.clone())
+            .pic_type(PictureType::CoverFront)
+            .mime_type(mime)
+            .build(),
+    )
 }
