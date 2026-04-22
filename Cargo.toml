@@ -1,0 +1,33 @@
+[workspace]
+members = ["crates/ncm-core", "crates/ncm-cli"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["JohnserfSeed"]
+repository = "https://github.com/JohnserfSeed/ncm2mp3"
+
+[workspace.dependencies]
+aes = "0.8"
+ecb = "0.1"
+cipher = { version = "0.4", features = ["alloc", "block-padding"] }
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+anyhow = "1"
+clap = { version = "4.5", features = ["derive"] }
+lofty = "0.21"
+strfmt = "0.2"
+rayon = "1.10"
+indicatif = { version = "0.17", features = ["rayon"] }
+walkdir = "2.5"
+env_logger = "0.11"
+log = "0.4"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
