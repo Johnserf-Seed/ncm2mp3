@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--from-file <list.txt>` to read additional input paths from a text file
+  (one path per line, `#` comments and blank lines ignored).
+- `--on-conflict skip|overwrite|rename` replaces the boolean `--overwrite`
+  with a three-way strategy. `rename` appends `-1`, `-2`, … to the output
+  stem until a free path is found. `--overwrite` kept as an alias.
+- `cover` subcommand — extract the embedded cover image as `stem.jpg` /
+  `stem.png` without decrypting the audio. Supports directory input + `-r`.
+- `watch` subcommand — monitor a directory and auto-decrypt new `.ncm`
+  files as they appear or get modified. Reuses decrypt pipeline options
+  (template, output, format, folder, on-conflict, no-tag). Debounces by
+  1s so editor-style intermediate writes merge into a single decryption.
+- Runtime stats in the summary line: elapsed wall-clock + per-format
+  breakdown (`Done: 10 ok, 0 skipped, 0 failed (1m23s) — MP3:8 FLAC:2`).
+- Configuration file support: TOML at `~/.config/ncm2mp3/config.toml`
+  (or `%APPDATA%\ncm2mp3\config.toml` on Windows). Precedence is
+  **CLI flags > config file > built-in defaults**. Override via `--config
+  <path>` or disable entirely via `--no-config`.
+- `docs/ARCHITECTURE.md` — byte-level NCM format reference, stream cipher
+  math, module layout.
+- `docs/demo.tape` — reproducible vhs script for regenerating the README
+  demo GIF locally.
+- Project hygiene files: `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`,
+  `.github/ISSUE_TEMPLATE/*`, `.github/PULL_REQUEST_TEMPLATE.md`.
+- `ncm-core` gained comprehensive rustdoc on every public item, with
+  `#![warn(missing_docs)]` enforced so CI rejects undocumented additions.
+
+### Changed
+
+- `Cli::input` is now `Option<PathBuf>` to accommodate `--from-file`
+  as the sole input source.
+- `AudioFormat` gained `#[derive(Hash)]` so it can key the per-format
+  stats `HashMap`.
+
 ## [0.1.0] - 2026-04-22
 
 Initial release.

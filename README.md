@@ -148,6 +148,31 @@ ncm2mp3 info song.ncm
 ncm2mp3 info ./ncm_library -r
 ```
 
+### 导出封面（不解密音频）
+
+```bash
+# 只导出封面文件到同目录
+ncm2mp3 cover song.ncm
+# -> song.jpg 或 song.png
+
+# 指定输出目录
+ncm2mp3 cover song.ncm -o ./covers
+```
+
+### 监听模式（边下边转）
+
+```bash
+# 监听目录：新 .ncm 出现或修改时自动解密
+ncm2mp3 watch ./Downloads -o ./Music
+# 按 Ctrl-C 退出
+
+# 支持 decrypt 的所有主要参数
+ncm2mp3 watch ./Downloads -o ./Music -t "{artist}/{album}/{title}" -F
+```
+
+**适用场景**：边在网易云客户端下载音乐，边自动落到目标库。内置 1 秒去抖，
+编辑器保存过程中的临时写入不会触发多次解密。
+
 ### 干跑预览
 
 ```bash

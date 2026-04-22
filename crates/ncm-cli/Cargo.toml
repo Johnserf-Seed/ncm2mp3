@@ -26,3 +26,5 @@ log = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
 dirs = { workspace = true }
+notify = { workspace = true }
+notify-debouncer-mini = { workspace = true }

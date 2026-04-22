@@ -12,6 +12,7 @@ pub enum CliCommand {
     Decrypt(Cli),
     Info(InfoArgs),
     Cover(CoverArgs),
+    Watch(WatchArgs),
     Completion(Shell),
 }
 
@@ -96,6 +97,20 @@ pub struct CoverArgs {
     pub output: Option<PathBuf>,
     pub recursive: bool,
     pub overwrite: bool,
+}
+
+/// `watch` subcommand args: watch a directory and auto-decrypt new NCM
+/// files as they appear. Reuses most of the decrypt pipeline options.
+#[derive(Debug, Clone)]
+pub struct WatchArgs {
+    /// The directory to watch.
+    pub dir: PathBuf,
+    pub output: Option<PathBuf>,
+    pub template: Option<String>,
+    pub format: Vec<String>,
+    pub no_tag: bool,
+    pub folder: bool,
+    pub on_conflict: ConflictStrategy,
 }
 
 /// Build the clap `Command` with help text from the chosen translation table.
@@ -279,6 +294,60 @@ pub fn build_command(s: &'static Strings) -> Command {
                 ),
         )
         .subcommand(
+            Command::new("watch")
+                .about(s.cmd_watch_about)
+                .arg(
+                    Arg::new("dir")
+                        .value_name(s.val_dir)
+                        .help(s.arg_watch_dir)
+                        .required(true)
+                        .value_parser(clap::value_parser!(PathBuf)),
+                )
+                .arg(
+                    Arg::new("output")
+                        .short('o')
+                        .long("output")
+                        .value_name(s.val_dir)
+                        .help(s.arg_output)
+                        .value_parser(clap::value_parser!(PathBuf)),
+                )
+                .arg(
+                    Arg::new("template")
+                        .short('t')
+                        .long("template")
+                        .value_name(s.val_template)
+                        .help(s.arg_template),
+                )
+                .arg(
+                    Arg::new("format")
+                        .long("format")
+                        .value_name(s.val_fmt)
+                        .value_delimiter(',')
+                        .help(s.arg_format)
+                        .action(ArgAction::Append),
+                )
+                .arg(
+                    Arg::new("no-tag")
+                        .long("no-tag")
+                        .help(s.arg_no_tag)
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("folder")
+                        .short('F')
+                        .long("folder")
+                        .help(s.arg_folder)
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("on-conflict")
+                        .long("on-conflict")
+                        .value_name(s.val_conflict)
+                        .help(s.arg_on_conflict)
+                        .value_parser(["skip", "overwrite", "rename"]),
+                ),
+        )
+        .subcommand(
             Command::new("completion")
                 .about(s.cmd_completion_about)
                 .arg(
@@ -310,6 +379,28 @@ pub fn parse(matches: &ArgMatches, lang: Lang) -> Result<CliCommand> {
             recursive: sub.get_flag("recursive"),
             overwrite: sub.get_flag("overwrite"),
         })),
+        Some(("watch", sub)) => {
+            let format = sub
+                .get_many::<String>("format")
+                .map(|v| v.cloned().collect())
+                .unwrap_or_default();
+            let on_conflict = sub
+                .get_one::<String>("on-conflict")
+                .and_then(|s| ConflictStrategy::parse(s))
+                .unwrap_or(ConflictStrategy::Skip);
+            Ok(CliCommand::Watch(WatchArgs {
+                dir: sub
+                    .get_one::<PathBuf>("dir")
+                    .cloned()
+                    .ok_or_else(|| anyhow!("watch directory is required"))?,
+                output: sub.get_one::<PathBuf>("output").cloned(),
+                template: sub.get_one::<String>("template").cloned(),
+                format,
+                no_tag: sub.get_flag("no-tag"),
+                folder: sub.get_flag("folder"),
+                on_conflict,
+            }))
+        }
         Some(("completion", sub)) => {
             let shell = sub
                 .get_one::<Shell>("shell")

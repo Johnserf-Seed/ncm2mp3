@@ -199,7 +199,9 @@ pub(crate) fn has_ncm_extension(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-enum Outcome {
+/// Per-file pipeline outcome. Exposed to sibling modules (e.g. `watch`) so
+/// they can drive the same engine without reimplementing the decrypt flow.
+pub(crate) enum Outcome {
     /// Decryption produced the audio file at `path` with the sniffed or
     /// declared `format`. Used to build the per-format breakdown.
     Written {
@@ -210,7 +212,7 @@ enum Outcome {
     Skipped(String),
 }
 
-fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
+pub(crate) fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
     let (mut decoder, headers) =
         NcmDecoder::open(input).with_context(|| format!("failed to parse {}", input.display()))?;
 

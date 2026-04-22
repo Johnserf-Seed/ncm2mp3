@@ -6,6 +6,7 @@ mod info;
 mod pipeline;
 mod tagger;
 mod template;
+mod watch;
 
 use std::time::Duration;
 
@@ -32,9 +33,10 @@ fn main() -> Result<()> {
     // / completion modes print their own structured output.
     let verbose = match &command {
         CliCommand::Decrypt(args) => args.log_level(),
-        CliCommand::Info(_) | CliCommand::Cover(_) | CliCommand::Completion(_) => {
-            log::LevelFilter::Warn
-        }
+        CliCommand::Info(_)
+        | CliCommand::Cover(_)
+        | CliCommand::Watch(_)
+        | CliCommand::Completion(_) => log::LevelFilter::Warn,
     };
     env_logger::Builder::new()
         .filter_level(verbose)
@@ -48,6 +50,7 @@ fn main() -> Result<()> {
         }
         CliCommand::Info(args) => info::run(&args)?,
         CliCommand::Cover(args) => cover::run(&args)?,
+        CliCommand::Watch(args) => watch::run(&args)?,
         CliCommand::Decrypt(mut args) => {
             // Merge in config file settings. Command-line flags already in
             // `args` take priority; config fills in the gaps. `--no-config`

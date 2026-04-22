@@ -148,6 +148,32 @@ ncm2mp3 info song.ncm
 ncm2mp3 info ./ncm_library -r
 ```
 
+### Extract just the cover art
+
+```bash
+# Write cover next to the NCM (auto-picks .jpg or .png by MIME)
+ncm2mp3 cover song.ncm
+# -> song.jpg or song.png
+
+# Into a dedicated directory
+ncm2mp3 cover song.ncm -o ./covers
+```
+
+### Watch mode
+
+```bash
+# Monitor a directory — new or modified .ncm files are decrypted on the fly
+ncm2mp3 watch ./Downloads -o ./Music
+# Ctrl-C to stop
+
+# All the usual decrypt knobs work
+ncm2mp3 watch ./Downloads -o ./Music -t "{artist}/{album}/{title}" -F
+```
+
+**Use case**: keep a terminal running while you download music; new files
+land in your target library automatically. A 1-second debouncer merges
+editor-style intermediate writes into a single decryption pass.
+
 ### Dry-run preview
 
 ```bash
