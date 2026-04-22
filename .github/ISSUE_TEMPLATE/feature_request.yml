@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest a new capability or improvement.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please check the README and [CHANGELOG](https://github.com/Johnserf-Seed/ncm2mp3/blob/main/CHANGELOG.md) to confirm the feature isn't already planned or implemented.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the use case, not the solution. What are you trying to do that the current tool makes hard?
+      placeholder: "I have 2000 .ncm files scattered across nested folders and want to reorganize them by artist/album while decrypting, but the current template system doesn't support ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should the tool do? Give an example command and expected output if you can.
+      placeholder: |
+        Add `--group-by artist/album` shortcut equivalent to `-t "{artist}/{album}/{title}"` but also ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds did you try? Why aren't they enough?
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: "This is about `.ncm` file decryption or CLI ergonomics — not a different audio format, not a GUI, not online API integration."
+          required: true

@@ -1,0 +1,90 @@
+name: Bug report
+description: Something doesn't work the way the docs say it should.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report. Please fill in as much as you reasonably can — incomplete reports are hard to act on.
+
+        If this is a security issue, please use the private disclosure channel described in [SECURITY.md](https://github.com/Johnserf-Seed/ncm2mp3/blob/main/SECURITY.md) instead.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What's wrong
+      description: Clear one-paragraph description of the problem.
+      placeholder: "e.g. `ncm2mp3 song.ncm` crashes with 'base64 decode failed' on files larger than 20 MB."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: |
+        Minimal steps to reproduce. If a specific NCM file is required, describe how to obtain a similar one (source, duration, format). **Don't upload copyrighted audio.**
+      placeholder: |
+        1. Download `example.ncm` from ...
+        2. Run `ncm2mp3 example.ncm -o out`
+        3. Observe error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual behavior
+      placeholder: |
+        Expected: `out/example.mp3` is produced, plays in VLC.
+        Actual:   Command exits with code 1 and prints "base64 decode failed: Invalid symbol 32, offset 3".
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "Output of `ncm2mp3 --version`, or commit hash if built from source."
+      placeholder: "ncm2mp3 0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other (specify in description)
+    validations:
+      required: true
+
+  - type: input
+    id: arch
+    attributes:
+      label: CPU architecture
+      description: "x86_64, aarch64, etc."
+      placeholder: "x86_64"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Verbose logs
+      description: "Run with `-vv` and paste the output here. Wrap in triple backticks."
+      render: shell
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I've searched existing issues and this isn't a duplicate.
+          required: true
+        - label: The NCM file I'm testing is one I legally own.
+          required: true
