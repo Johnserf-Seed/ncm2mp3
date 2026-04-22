@@ -6,11 +6,22 @@
 
 const S_BOX_SIZE: usize = 256;
 
+/// NCM-specific stream cipher. Standard RC4 key scheduling (KSA) followed
+/// by a custom pseudo-random generation (PRGA) that indexes `S` by byte
+/// offset rather than maintaining evolving state — which is what lets
+/// [`apply`](Self::apply) decrypt arbitrary chunks at arbitrary offsets.
 pub struct NcmStreamCipher {
     s_box: [u8; S_BOX_SIZE],
 }
 
 impl NcmStreamCipher {
+    /// Initialize from raw key bytes via the standard RC4 KSA.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `key` is empty. Callers that parsed the key out of an NCM
+    /// file should already have non-empty key material; empty is a
+    /// programmer error, not a data error.
     pub fn new(key: &[u8]) -> Self {
         assert!(!key.is_empty(), "NCM stream key must be non-empty");
 

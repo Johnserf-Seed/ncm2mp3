@@ -1,3 +1,14 @@
+//! Metadata deserialization for the NCM JSON payload.
+//!
+//! The NCM container embeds a JSON blob with song info (title, artist, album,
+//! format hint, bitrate, duration, cover URL). This module defines two
+//! layers:
+//!
+//! - [`RawMetadata`] mirrors the on-wire JSON field names for easy
+//!   debugging / cross-referencing with other implementations.
+//! - [`NcmMetadata`] is the cleaned-up, user-facing shape — flattened
+//!   artist list, mapped [`AudioFormat`] enum, accessor helpers.
+
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
@@ -7,27 +18,38 @@ use crate::format::AudioFormat;
 /// mapping stays obvious when comparing against reference implementations.
 #[derive(Debug, Deserialize)]
 pub struct RawMetadata {
+    /// Song title (wire name: `musicName`).
     #[serde(rename = "musicName", default)]
     pub music_name: String,
 
+    /// Flattened artist names (wire name: `artist`, shape
+    /// `[["Name", id], ...]`; IDs are discarded).
     #[serde(default, deserialize_with = "deserialize_artists")]
     pub artist: Vec<String>,
 
+    /// Album name.
     #[serde(default)]
     pub album: String,
 
+    /// Declared audio format hint — `"mp3"`, `"flac"`, etc. Treat as advisory
+    /// only; real format is determined from the decrypted audio's magic bytes.
     #[serde(default)]
     pub format: String,
 
+    /// Bitrate in bits per second (not kbps).
     #[serde(default)]
     pub bitrate: Option<u64>,
 
+    /// Duration in milliseconds.
     #[serde(default)]
     pub duration: Option<u64>,
 
+    /// Album cover image URL (wire name: `albumPic`). Not fetched by this
+    /// crate; the embedded binary cover inside the NCM container is used.
     #[serde(rename = "albumPic", default)]
     pub album_pic: Option<String>,
 
+    /// Alias / alternate title list (sometimes populated, often empty).
     #[serde(default)]
     pub alias: Vec<String>,
 }
@@ -62,19 +84,31 @@ where
     Ok(names)
 }
 
-/// Cleaned metadata used by the rest of the pipeline.
+/// Cleaned, user-facing metadata. Produced from [`RawMetadata`] via
+/// [`NcmMetadata::from_raw`]. This is what you interact with from
+/// [`NcmHeaders::metadata`](crate::NcmHeaders).
 #[derive(Debug, Clone)]
 pub struct NcmMetadata {
+    /// Song title. May be empty; use [`fallback_title`](Self::fallback_title)
+    /// if you need a non-empty string.
     pub title: String,
+    /// Artist names. Empty if none were present in the NCM.
     pub artists: Vec<String>,
+    /// Album name. May be empty.
     pub album: String,
+    /// Audio format declared in the metadata. Advisory only — may disagree
+    /// with the format sniffed from the actual audio head bytes.
     pub declared_format: AudioFormat,
+    /// Bitrate in bits per second. Divide by 1000 for kbps.
     pub bitrate: Option<u64>,
+    /// Duration in milliseconds.
     pub duration: Option<u64>,
+    /// Album cover URL, if the NCM carried one. Not fetched.
     pub album_pic_url: Option<String>,
 }
 
 impl NcmMetadata {
+    /// Convert a wire-shaped [`RawMetadata`] into the cleaned-up form.
     pub fn from_raw(raw: RawMetadata) -> Self {
         Self {
             title: raw.music_name,
@@ -87,10 +121,14 @@ impl NcmMetadata {
         }
     }
 
+    /// Join all artist names with `sep`. Returns an empty string if
+    /// [`artists`](Self::artists) is empty.
     pub fn artists_joined(&self, sep: &str) -> String {
         self.artists.join(sep)
     }
 
+    /// Return the title, or the literal `"unknown"` if the title is empty.
+    /// Useful when the title needs to land in a filesystem path.
     pub fn fallback_title(&self) -> &str {
         if self.title.is_empty() {
             "unknown"

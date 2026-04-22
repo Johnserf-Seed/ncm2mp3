@@ -1,4 +1,9 @@
-//! Parse each segment of an NCM file from a `Read` source.
+//! Segment-by-segment NCM file parser.
+//!
+//! Each `read_*` function expects the reader to be positioned at the start of
+//! its segment and leaves the reader positioned at the next one. Usually you
+//! won't call these directly — use [`NcmDecoder`](crate::NcmDecoder), which
+//! stitches the segments together and head-sniffs the audio format.
 
 use std::io::Read;
 
@@ -13,6 +18,8 @@ use crate::format::{
 };
 use crate::metadata::{NcmMetadata, RawMetadata};
 
+/// Read and verify the 8-byte magic (`CTENFDAM`) + 2-byte gap at the start
+/// of the file. Errors with [`NcmError::InvalidMagic`] on mismatch.
 pub fn read_and_verify_magic<R: Read>(reader: &mut R) -> Result<()> {
     let mut magic = [0u8; MAGIC.len()];
     reader
@@ -111,7 +118,9 @@ pub fn read_metadata<R: Read>(reader: &mut R) -> Result<NcmMetadata> {
     Ok(NcmMetadata::from_raw(raw))
 }
 
-/// Skip the CRC32 + 5-byte gap that sits between metadata and cover.
+/// Skip the 4-byte CRC32 + 5-byte gap that sits between metadata and cover.
+/// We don't validate the CRC — its computation isn't documented and skipping
+/// it hasn't caused problems on real files.
 pub fn skip_crc_gap<R: Read>(reader: &mut R) -> Result<()> {
     let mut skip = [0u8; 9];
     reader
@@ -120,12 +129,17 @@ pub fn skip_crc_gap<R: Read>(reader: &mut R) -> Result<()> {
     Ok(())
 }
 
+/// Embedded album cover image.
 #[derive(Debug, Clone)]
 pub struct Cover {
+    /// Detected image MIME, inferred from the first bytes of [`data`](Self::data).
     pub mime: CoverMime,
+    /// Raw image bytes (JPEG or PNG) — no decryption needed.
     pub data: Vec<u8>,
 }
 
+/// Read the cover segment. Returns `None` when the declared cover length is
+/// zero (the NCM carried no cover).
 pub fn read_cover<R: Read>(reader: &mut R) -> Result<Option<Cover>> {
     let len = read_u32_le(reader, "cover length")?;
     if len == 0 {
@@ -136,6 +150,8 @@ pub fn read_cover<R: Read>(reader: &mut R) -> Result<Option<Cover>> {
     Ok(Some(Cover { mime, data }))
 }
 
+/// Build an [`NcmStreamCipher`] from raw key bytes. Thin convenience over
+/// [`NcmStreamCipher::new`](crate::crypto::NcmStreamCipher::new).
 pub fn stream_cipher_from_key(key: &[u8]) -> NcmStreamCipher {
     NcmStreamCipher::new(key)
 }

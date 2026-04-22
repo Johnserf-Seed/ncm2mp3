@@ -1,18 +1,31 @@
-//! NCM binary format constants and audio format detection.
+//! NCM binary format constants and audio/cover format detection.
+//!
+//! All constants come from reverse-engineering the Netease Cloud Music
+//! client; see [`ARCHITECTURE.md`](https://github.com/Johnserf-Seed/ncm2mp3/blob/main/docs/ARCHITECTURE.md)
+//! for the full format breakdown.
 
+/// 8-byte magic that every NCM file starts with: ASCII `CTENFDAM`.
 pub const MAGIC: [u8; 8] = [0x43, 0x54, 0x45, 0x4E, 0x46, 0x44, 0x41, 0x4D];
 
+/// Hard-coded AES-128 key used to decrypt the RC4-key blob.
 pub const CORE_KEY: [u8; 16] = *b"hzHRAmso5kInbaxW";
+/// Hard-coded AES-128 key used to decrypt the metadata blob.
 pub const META_KEY: [u8; 16] = *b"#14ljk_!\\]&0U<'(";
 
+/// XOR mask applied byte-wise to the RC4-key blob before AES decryption.
 pub const KEY_XOR_MASK: u8 = 0x64;
+/// XOR mask applied byte-wise to the metadata blob before base64 decoding.
 pub const META_XOR_MASK: u8 = 0x63;
 
+/// ASCII prefix that precedes the actual RC4 key inside the AES-decrypted
+/// key blob. Must be stripped to recover the real key bytes.
 pub const KEY_PREFIX: &[u8] = b"neteasecloudmusic";
+/// ASCII prefix that precedes the metadata JSON inside the AES-decrypted
+/// metadata payload. Must be stripped before JSON parsing.
 pub const META_PREFIX: &[u8] = b"music:";
 
 /// Fixed ASCII header that precedes the base64 payload inside the metadata
-/// segment, visible only after XORing the segment with `META_XOR_MASK`.
+/// segment, visible only after XORing the segment with [`META_XOR_MASK`].
 pub const META_PLAIN_PREFIX: &[u8] = b"163 key(Don't modify):";
 
 /// Reject any length field larger than 64 MiB. Legit keys and metadata are
@@ -20,20 +33,30 @@ pub const META_PLAIN_PREFIX: &[u8] = b"163 key(Don't modify):";
 /// either a corrupt file or an attacker-controlled length field.
 pub const MAX_SEGMENT_LEN: u32 = 64 * 1024 * 1024;
 
-/// Recommended read chunk for streaming the audio segment.
+/// Recommended read chunk size for streaming the audio segment.
 pub const STREAM_CHUNK_SIZE: usize = 32 * 1024;
 
+/// Audio format identified either from the metadata's `format` hint or from
+/// sniffing the decrypted audio's magic bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioFormat {
+    /// MP3 (MPEG Audio Layer III), with or without ID3v2 tags.
     Mp3,
+    /// FLAC (Free Lossless Audio Codec).
     Flac,
+    /// M4A / MP4 audio (AAC-in-MP4 container).
     M4a,
+    /// WAV (RIFF WAVE container).
     Wav,
+    /// Ogg (typically Vorbis).
     Ogg,
+    /// Format could not be identified from magic bytes or hint.
     Unknown,
 }
 
 impl AudioFormat {
+    /// Canonical file extension (no leading dot) for this format.
+    /// Returns `"bin"` for [`AudioFormat::Unknown`].
     pub fn extension(self) -> &'static str {
         match self {
             AudioFormat::Mp3 => "mp3",
@@ -45,6 +68,9 @@ impl AudioFormat {
         }
     }
 
+    /// Map the metadata's `format` string hint (e.g. `"mp3"`, `"flac"`) onto
+    /// an [`AudioFormat`]. Case-insensitive; unknown values yield
+    /// [`AudioFormat::Unknown`].
     pub fn from_hint(hint: &str) -> Self {
         match hint.to_ascii_lowercase().as_str() {
             "mp3" => AudioFormat::Mp3,
@@ -56,7 +82,11 @@ impl AudioFormat {
         }
     }
 
-    /// Detect audio format from the first bytes of the decrypted stream.
+    /// Detect audio format from the first bytes of a decrypted audio stream.
+    ///
+    /// Checks for `ID3` / MP3 sync bytes / `fLaC` / `ftyp` at offset 4 /
+    /// `RIFF...WAVE` / `OggS`. Returns [`AudioFormat::Unknown`] if no known
+    /// signature matches.
     pub fn detect(head: &[u8]) -> Self {
         if head.len() >= 3 && &head[..3] == b"ID3" {
             return AudioFormat::Mp3;
@@ -80,14 +110,19 @@ impl AudioFormat {
     }
 }
 
+/// MIME type of the embedded cover image, inferred from its magic bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoverMime {
+    /// JPEG (`FF D8 FF …`).
     Jpeg,
+    /// PNG (`89 50 4E 47 0D 0A 1A 0A …`).
     Png,
+    /// Unknown or unrecognized image format.
     Unknown,
 }
 
 impl CoverMime {
+    /// Detect the cover image format from its first bytes.
     pub fn detect(head: &[u8]) -> Self {
         if head.len() >= 3 && head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF {
             return CoverMime::Jpeg;
@@ -98,6 +133,8 @@ impl CoverMime {
         CoverMime::Unknown
     }
 
+    /// IANA MIME string, suitable for tagger libraries or HTTP headers.
+    /// Returns `"application/octet-stream"` for [`CoverMime::Unknown`].
     pub fn as_str(self) -> &'static str {
         match self {
             CoverMime::Jpeg => "image/jpeg",
@@ -107,6 +144,10 @@ impl CoverMime {
     }
 }
 
+/// Check whether `bytes` starts with the [`MAGIC`] sequence.
+///
+/// Cheap predicate used early in the parser to reject non-NCM inputs before
+/// any allocations happen.
 pub fn is_ncm_magic(bytes: &[u8]) -> bool {
     bytes.len() >= MAGIC.len() && bytes[..MAGIC.len()] == MAGIC
 }

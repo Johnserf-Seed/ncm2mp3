@@ -14,16 +14,24 @@ use crate::parser::{
 };
 
 /// Headers and context available after parsing an NCM file's preamble.
+///
+/// Returned alongside the [`NcmDecoder`] — you can inspect the metadata,
+/// cover, and effective audio format *before* deciding whether to run the
+/// full audio decryption.
 #[derive(Debug, Clone)]
 pub struct NcmHeaders {
+    /// Cleaned song metadata (title, artist, album, bitrate, duration).
     pub metadata: NcmMetadata,
+    /// Embedded cover image, if the NCM carried one.
     pub cover: Option<Cover>,
+    /// Format sniffed from the first decrypted audio bytes (not the
+    /// metadata's hint — see [`Self::effective_format`]).
     pub detected_format: AudioFormat,
 }
 
 impl NcmHeaders {
-    /// Prefer the sniffed magic over the declared format; fall back when the
-    /// sniff is inconclusive.
+    /// Prefer the format sniffed from the audio's magic bytes; fall back to
+    /// the metadata's `format` hint when sniffing was inconclusive.
     pub fn effective_format(&self) -> AudioFormat {
         if self.detected_format != AudioFormat::Unknown {
             self.detected_format
@@ -33,6 +41,15 @@ impl NcmHeaders {
     }
 }
 
+/// Streams an NCM file's encrypted audio segment through the NCM stream
+/// cipher.
+///
+/// Construct via [`Self::open`] (for file paths) or [`Self::from_reader`]
+/// (for any `Read`). The constructor also parses the preamble and returns
+/// [`NcmHeaders`], so by the time you have a decoder, the metadata and
+/// cover are already available.
+///
+/// Call [`Self::decode_to_writer`] to stream the decrypted audio out.
 pub struct NcmDecoder<R: Read> {
     reader: R,
     cipher: NcmStreamCipher,
@@ -41,6 +58,8 @@ pub struct NcmDecoder<R: Read> {
 }
 
 impl NcmDecoder<BufReader<File>> {
+    /// Open an NCM file at `path`, parse its headers, and return the decoder
+    /// positioned at the start of the audio stream.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<(Self, NcmHeaders)> {
         let file = File::open(path)?;
         let reader = BufReader::with_capacity(64 * 1024, file);
