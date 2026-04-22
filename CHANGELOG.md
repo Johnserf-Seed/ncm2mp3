@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-23
+
 ### Added
 
 - `--from-file <list.txt>` to read additional input paths from a text file
@@ -41,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as the sole input source.
 - `AudioFormat` gained `#[derive(Hash)]` so it can key the per-format
   stats `HashMap`.
+- Bumped seven major-version-stale dependencies across two waves:
+  thiserror 1→2, console 0.15→0.16, aes 0.8→0.9, cipher 0.4→0.5,
+  ecb 0.1→0.2, lofty 0.21→0.24, dirs 5→6, notify 6→8,
+  notify-debouncer-mini 0.4→0.7, toml 0.8→1.
 
 ## [0.1.0] - 2026-04-22
 
@@ -77,5 +83,6 @@ Initial release.
 - **Documentation** — bilingual `README.md` (Chinese) + `README_en.md` (English)
 - **License** — Apache-2.0
 
-[Unreleased]: https://github.com/Johnserf-Seed/ncm2mp3/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Johnserf-Seed/ncm2mp3/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.1.0
