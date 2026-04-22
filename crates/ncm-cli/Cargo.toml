@@ -1,0 +1,25 @@
+[package]
+name = "ncm-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "CLI to decrypt Netease Cloud Music NCM files"
+
+[[bin]]
+name = "ncm2mp3"
+path = "src/main.rs"
+
+[dependencies]
+ncm-core = { path = "../ncm-core" }
+clap = { workspace = true }
+clap_complete = { workspace = true }
+anyhow = { workspace = true }
+lofty = { workspace = true }
+strfmt = { workspace = true }
+rayon = { workspace = true }
+console = { workspace = true }
+walkdir = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
