@@ -6,8 +6,8 @@ resolver = "2"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-authors = ["JohnserfSeed"]
-repository = "https://github.com/JohnserfSeed/ncm2mp3"
+authors = ["Johnserf-Seed"]
+repository = "https://github.com/Johnserf-Seed/ncm2mp3"
 
 [workspace.dependencies]
 aes = "0.8"

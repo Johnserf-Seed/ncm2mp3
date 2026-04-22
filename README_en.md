@@ -37,7 +37,7 @@ Done: 1 ok, 0 skipped, 0 failed
 
 ### Download a prebuilt binary (easiest)
 
-Grab the archive for your platform from the [Releases page](https://github.com/JohnserfSeed/ncm2mp3/releases):
+Grab the archive for your platform from the [Releases page](https://github.com/Johnserf-Seed/ncm2mp3/releases):
 
 - `ncm2mp3-vX.Y.Z-x86_64-pc-windows-msvc.zip` — Windows 64-bit
 - `ncm2mp3-vX.Y.Z-aarch64-pc-windows-msvc.zip` — Windows ARM64
@@ -53,7 +53,7 @@ Extract and drop `ncm2mp3(.exe)` somewhere on your PATH.
 Requires the [Rust toolchain](https://rustup.rs/) (1.75+).
 
 ```bash
-git clone https://github.com/JohnserfSeed/ncm2mp3.git
+git clone https://github.com/Johnserf-Seed/ncm2mp3.git
 cd ncm2mp3
 cargo build --release
 # Binary lands at target/release/ncm2mp3(.exe)

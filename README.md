@@ -37,7 +37,7 @@ $ ncm2mp3 "范玮琪,张韶涵 - 如果的事.ncm"
 
 ### 下载预编译二进制（最简单）
 
-到 [Releases 页面](https://github.com/JohnserfSeed/ncm2mp3/releases) 下载对应你平台的压缩包：
+到 [Releases 页面](https://github.com/Johnserf-Seed/ncm2mp3/releases) 下载对应你平台的压缩包：
 
 - `ncm2mp3-vX.Y.Z-x86_64-pc-windows-msvc.zip` — Windows 64 位
 - `ncm2mp3-vX.Y.Z-aarch64-pc-windows-msvc.zip` — Windows ARM64
@@ -53,7 +53,7 @@ $ ncm2mp3 "范玮琪,张韶涵 - 如果的事.ncm"
 需要 [Rust 工具链](https://rustup.rs/)（1.75+）。
 
 ```bash
-git clone https://github.com/JohnserfSeed/ncm2mp3.git
+git clone https://github.com/Johnserf-Seed/ncm2mp3.git
 cd ncm2mp3
 cargo build --release
 # 可执行文件在 target/release/ncm2mp3(.exe)
