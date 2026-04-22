@@ -41,7 +41,7 @@ Type "ncm2mp3 sample.ncm -o ./out-folder -F"
 Sleep 400ms
 Enter
 Sleep 2000ms
-Type "ls out-folder/"
+Type "ls out-folder/sample/"
 Sleep 300ms
 Enter
 Sleep 2500ms

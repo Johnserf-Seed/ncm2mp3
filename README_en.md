@@ -4,9 +4,7 @@
 
 A Rust CLI that decrypts Netease Cloud Music `.ncm` files back into their original audio (MP3 / FLAC / M4A …), with tags, cover art, parallel batching, and bilingual EN/ZH UI.
 
-<!-- To re-record this demo, see docs/demo.tape (a vhs script). -->
-<!-- Once docs/demo.gif exists, uncomment the line below. -->
-<!-- ![Demo](./docs/demo.gif) -->
+![Demo](./docs/demo.gif)
 
 **Inspect metadata (no decryption)**:
 
