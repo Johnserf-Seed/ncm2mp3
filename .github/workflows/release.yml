@@ -69,16 +69,19 @@ jobs:
 
       - name: Stage artifact (Unix)
         if: matrix.os != 'windows-latest'
+        id: stage_unix
+        shell: bash
         run: |
           STAGE="${BIN_NAME}-${GITHUB_REF_NAME:-manual}-${{ matrix.target }}"
           mkdir "$STAGE"
           cp "target/${{ matrix.target }}/release/${BIN_NAME}" "$STAGE/"
           cp README.md README_en.md LICENSE "$STAGE/"
           tar -czf "${STAGE}.tar.gz" "$STAGE"
-          echo "ASSET=${STAGE}.tar.gz" >> $GITHUB_ENV
+          echo "asset=${STAGE}.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: Stage artifact (Windows)
         if: matrix.os == 'windows-latest'
+        id: stage_win
         shell: pwsh
         run: |
           $tag = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "manual" }
@@ -87,13 +90,16 @@ jobs:
           Copy-Item "target/${{ matrix.target }}/release/$env:BIN_NAME.exe" $stage
           Copy-Item README.md, README_en.md, LICENSE $stage
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
-          "ASSET=$stage.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "asset=$stage.zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: ${{ env.ASSET }}
+          # Exactly one of the two stage steps runs, based on matrix.os.
+          # The unused one's `outputs.asset` is empty, so `||` selects the
+          # populated value at runtime.
+          path: ${{ steps.stage_unix.outputs.asset || steps.stage_win.outputs.asset }}
           if-no-files-found: error
 
   release:
