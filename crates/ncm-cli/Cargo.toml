@@ -18,7 +18,7 @@ anyhow = { workspace = true }
 lofty = { workspace = true }
 strfmt = { workspace = true }
 rayon = { workspace = true }
-indicatif = { workspace = true }
+console = { workspace = true }
 walkdir = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }

@@ -8,13 +8,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context, Result};
-use ncm_core::{AudioFormat, NcmDecoder, NcmHeaders};
+use console::style;
+use ncm_core::{AudioFormat, Cover, CoverMime, NcmDecoder, NcmHeaders};
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
 use crate::cli::Cli;
 use crate::i18n::t;
-use crate::progress::{build_bar, build_multi};
 use crate::{tagger, template};
 
 #[derive(Debug)]
@@ -44,9 +44,6 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
         t().msg_queued.replace("{count}", &files.len().to_string())
     );
 
-    let multi = build_multi();
-    let pb = build_bar(&multi, files.len() as u64);
-
     let ok = Arc::new(AtomicUsize::new(0));
     let skipped = Arc::new(AtomicUsize::new(0));
     let failed = Arc::new(AtomicUsize::new(0));
@@ -55,35 +52,44 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
 
     pool.install(|| {
         files.par_iter().for_each(|input| {
-            pb.set_message(input.display().to_string());
             match process_one(input, args) {
                 Ok(Outcome::Written(path)) => {
                     ok.fetch_add(1, Ordering::Relaxed);
-                    log::info!("{} -> {}", input.display(), path.display());
+                    eprintln!(
+                        "{} {} -> {}",
+                        style("✓").green().bold(),
+                        input.display(),
+                        path.display()
+                    );
                 }
                 Ok(Outcome::Skipped(reason)) => {
                     skipped.fetch_add(1, Ordering::Relaxed);
-                    log::info!("{}: {reason}", input.display());
+                    eprintln!(
+                        "{} {}  ({reason})",
+                        style("·").yellow(),
+                        input.display()
+                    );
                 }
                 Ok(Outcome::DryRun(path)) => {
                     ok.fetch_add(1, Ordering::Relaxed);
-                    println!(
+                    eprintln!(
                         "{} {} -> {}",
-                        t().msg_dry_run_prefix,
+                        style(t().msg_dry_run_prefix).cyan(),
                         input.display(),
                         path.display()
                     );
                 }
                 Err(e) => {
                     failed.fetch_add(1, Ordering::Relaxed);
-                    log::error!("{}: {e:#}", input.display());
+                    eprintln!(
+                        "{} {}: {e:#}",
+                        style("✗").red().bold(),
+                        input.display()
+                    );
                 }
             }
-            pb.inc(1);
         });
     });
-
-    pb.finish_with_message(t().msg_progress_done);
 
     Ok(RunSummary {
         ok: ok.load(Ordering::Relaxed),
@@ -194,7 +200,33 @@ fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
         }
     }
 
+    if args.folder {
+        if let Some(cover) = headers.cover.as_ref() {
+            if let Err(e) = write_cover_file(&out_path, cover) {
+                log::warn!("failed to write external cover next to {}: {e:#}", out_path.display());
+            }
+        }
+    }
+
     Ok(Outcome::Written(out_path))
+}
+
+/// Drop the cover art as `cover.jpg`/`cover.png` next to the audio file.
+/// Skips silently when the MIME can't be classified (leaving a `.bin` blob
+/// next to a song would be more annoying than helpful).
+fn write_cover_file(audio_path: &Path, cover: &Cover) -> Result<()> {
+    let ext = match cover.mime {
+        CoverMime::Jpeg => "jpg",
+        CoverMime::Png => "png",
+        CoverMime::Unknown => return Ok(()),
+    };
+    let parent = audio_path
+        .parent()
+        .ok_or_else(|| anyhow!("audio output has no parent directory"))?;
+    let cover_path = parent.join(format!("cover.{ext}"));
+    fs::write(&cover_path, &cover.data)
+        .with_context(|| format!("failed to write {}", cover_path.display()))?;
+    Ok(())
 }
 
 fn format_matches(filter: &[String], format: AudioFormat) -> bool {
@@ -239,6 +271,16 @@ fn build_output_path(
                 .filter(|s| !s.is_empty())
                 .unwrap_or("unknown");
             out.push(stem);
+        }
+    }
+
+    // Folder mode: turn the last segment (so far acting as a filename stem)
+    // into a directory and place the audio file with the same stem inside it.
+    //   output/Foo.mp3            -> output/Foo/Foo.mp3
+    //   output/Artist/Album/Song  -> output/Artist/Album/Song/Song
+    if args.folder {
+        if let Some(last) = out.file_name().map(|s| s.to_owned()) {
+            out.push(&last);
         }
     }
 

@@ -1,7 +1,6 @@
 mod cli;
 mod i18n;
 mod pipeline;
-mod progress;
 mod tagger;
 mod template;
 

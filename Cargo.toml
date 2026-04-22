@@ -22,7 +22,7 @@ clap = { version = "4.5", default-features = false, features = ["std", "help", "
 lofty = "0.21"
 strfmt = "0.2"
 rayon = "1.10"
-indicatif = { version = "0.17", features = ["rayon"] }
+console = "0.15"
 walkdir = "2.5"
 env_logger = "0.11"
 log = "0.4"

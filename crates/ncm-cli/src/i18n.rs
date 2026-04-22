@@ -21,6 +21,7 @@ pub struct Strings {
     pub arg_recursive: &'static str,
     pub arg_format: &'static str,
     pub arg_no_tag: &'static str,
+    pub arg_folder: &'static str,
     pub arg_jobs: &'static str,
     pub arg_overwrite: &'static str,
     pub arg_dry_run: &'static str,
@@ -49,7 +50,6 @@ pub struct Strings {
     pub msg_tagging_failed: &'static str,
     /// `{path}`
     pub msg_input_missing: &'static str,
-    pub msg_progress_done: &'static str,
     /// `{ok}`, `{skipped}`, `{failed}`
     pub msg_summary: &'static str,
 
@@ -67,6 +67,7 @@ pub const EN: Strings = Strings {
     arg_recursive: "Recurse into subdirectories when INPUT is a directory",
     arg_format: "Only process files whose internal format matches (e.g. mp3,flac). Can be repeated or comma-separated.",
     arg_no_tag: "Do not write ID3/Vorbis tags or embed cover art",
+    arg_folder: "Wrap each decrypted song in its own folder, and also drop the cover art as a separate cover.jpg/cover.png file inside it",
     arg_jobs: "Number of parallel workers (default: number of CPU cores)",
     arg_overwrite: "Overwrite existing output files instead of skipping them",
     arg_dry_run: "Print what would be done without writing any output files",
@@ -87,7 +88,6 @@ pub const EN: Strings = Strings {
     msg_dry_run_prefix: "[dry-run]",
     msg_tagging_failed: "tagging failed for {path} (file still decrypted)",
     msg_input_missing: "input path does not exist: {path}",
-    msg_progress_done: "done",
     msg_summary: "Done: {ok} ok, {skipped} skipped, {failed} failed",
 
     err_jobs_zero: "--jobs must be >= 1",
@@ -103,6 +103,7 @@ pub const ZH: Strings = Strings {
     arg_recursive: "当 INPUT 为目录时递归处理子目录",
     arg_format: "仅处理内部格式匹配的文件（例如 mp3,flac）。可多次指定或用逗号分隔。",
     arg_no_tag: "不写入 ID3/Vorbis 标签，也不嵌入封面",
+    arg_folder: "为每首歌创建独立的文件夹，并在文件夹内额外写入独立的 cover.jpg / cover.png 封面文件",
     arg_jobs: "并行 worker 数（默认：CPU 核心数）",
     arg_overwrite: "覆盖已存在的输出文件，而不是跳过",
     arg_dry_run: "仅打印将要执行的操作，不写入任何文件",
@@ -123,7 +124,6 @@ pub const ZH: Strings = Strings {
     msg_dry_run_prefix: "[试运行]",
     msg_tagging_failed: "{path} 写入标签失败（音频已解密完成）",
     msg_input_missing: "输入路径不存在：{path}",
-    msg_progress_done: "完成",
     msg_summary: "完成：{ok} 成功，{skipped} 跳过，{failed} 失败",
 
     err_jobs_zero: "--jobs 必须 >= 1",

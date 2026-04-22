@@ -16,6 +16,7 @@ pub struct Cli {
     pub recursive: bool,
     pub format: Vec<String>,
     pub no_tag: bool,
+    pub folder: bool,
     pub jobs: Option<usize>,
     pub overwrite: bool,
     pub dry_run: bool,
@@ -89,6 +90,13 @@ pub fn build_command(s: &'static Strings) -> Command {
                 .action(ArgAction::SetTrue),
         )
         .arg(
+            Arg::new("folder")
+                .short('F')
+                .long("folder")
+                .help(s.arg_folder)
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
             Arg::new("jobs")
                 .short('j')
                 .long("jobs")
@@ -143,6 +151,7 @@ pub fn cli_from_matches(matches: &ArgMatches, lang: Lang) -> Cli {
         recursive: matches.get_flag("recursive"),
         format,
         no_tag: matches.get_flag("no-tag"),
+        folder: matches.get_flag("folder"),
         jobs: matches.get_one::<usize>("jobs").copied(),
         overwrite: matches.get_flag("overwrite"),
         dry_run: matches.get_flag("dry-run"),
