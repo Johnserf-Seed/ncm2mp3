@@ -1,14 +1,22 @@
 mod cli;
+mod i18n;
 mod pipeline;
 mod progress;
 mod tagger;
 mod template;
 
 use anyhow::Result;
-use clap::Parser;
+
+use crate::i18n::{t, Lang};
 
 fn main() -> Result<()> {
-    let args = cli::Cli::parse();
+    // Pick the locale before clap runs so `--help` text is already localized.
+    // Priority: explicit `--lang`/`-L` on argv > env vars > default English.
+    let lang = prescan_lang().unwrap_or_else(Lang::detect_from_env);
+    i18n::init(lang.strings());
+
+    let matches = cli::build_command(lang.strings()).get_matches();
+    let args = cli::cli_from_matches(&matches, lang);
 
     env_logger::Builder::new()
         .filter_level(args.log_level())
@@ -18,9 +26,13 @@ fn main() -> Result<()> {
 
     let summary = pipeline::run(&args)?;
 
+    let s = t();
     eprintln!(
-        "\nDone: {} ok, {} skipped, {} failed",
-        summary.ok, summary.skipped, summary.failed
+        "\n{}",
+        s.msg_summary
+            .replace("{ok}", &summary.ok.to_string())
+            .replace("{skipped}", &summary.skipped.to_string())
+            .replace("{failed}", &summary.failed.to_string())
     );
 
     if summary.failed > 0 {
@@ -28,4 +40,20 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Minimal pre-clap scan of argv to pick up `--lang`/`-L`/`--lang=…` before
+/// building the clap command. This lets us localize `--help` itself, which
+/// clap otherwise freezes at the moment the command is constructed.
+fn prescan_lang() -> Option<Lang> {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if let Some(val) = arg.strip_prefix("--lang=") {
+            return Lang::parse(val);
+        }
+        if arg == "--lang" || arg == "-L" {
+            return args.next().and_then(|s| Lang::parse(&s));
+        }
+    }
+    None
 }

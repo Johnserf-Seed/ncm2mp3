@@ -11,6 +11,10 @@ pub const META_XOR_MASK: u8 = 0x63;
 pub const KEY_PREFIX: &[u8] = b"neteasecloudmusic";
 pub const META_PREFIX: &[u8] = b"music:";
 
+/// Fixed ASCII header that precedes the base64 payload inside the metadata
+/// segment, visible only after XORing the segment with `META_XOR_MASK`.
+pub const META_PLAIN_PREFIX: &[u8] = b"163 key(Don't modify):";
+
 /// Reject any length field larger than 64 MiB. Legit keys and metadata are
 /// only a few kilobytes; covers are at most a few MiB. Anything larger is
 /// either a corrupt file or an attacker-controlled length field.

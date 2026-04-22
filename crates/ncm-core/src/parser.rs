@@ -8,8 +8,8 @@ use base64::Engine;
 use crate::crypto::{aes128_ecb_decrypt, NcmStreamCipher};
 use crate::error::{NcmError, Result};
 use crate::format::{
-    is_ncm_magic, CoverMime, CORE_KEY, KEY_PREFIX, KEY_XOR_MASK, MAGIC, MAX_SEGMENT_LEN,
-    META_KEY, META_PREFIX, META_XOR_MASK,
+    is_ncm_magic, CoverMime, CORE_KEY, KEY_PREFIX, KEY_XOR_MASK, MAGIC, MAX_SEGMENT_LEN, META_KEY,
+    META_PLAIN_PREFIX, META_PREFIX, META_XOR_MASK,
 };
 use crate::metadata::{NcmMetadata, RawMetadata};
 
@@ -92,7 +92,14 @@ pub fn read_metadata<R: Read>(reader: &mut R) -> Result<NcmMetadata> {
         *byte ^= META_XOR_MASK;
     }
 
-    let decoded = BASE64.decode(&blob)?;
+    // After XOR, the segment starts with the literal ASCII tag
+    // "163 key(Don't modify):" before the base64 payload begins.
+    if !blob.starts_with(META_PLAIN_PREFIX) {
+        return Err(NcmError::InvalidMetaHeader);
+    }
+    let b64_section = &blob[META_PLAIN_PREFIX.len()..];
+
+    let decoded = BASE64.decode(b64_section)?;
     let decrypted = aes128_ecb_decrypt(&META_KEY, &decoded)?;
 
     if !decrypted.starts_with(META_PREFIX) {

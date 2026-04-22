@@ -11,6 +11,9 @@ pub enum NcmError {
     #[error("RC4 key missing 'neteasecloudmusic' prefix")]
     InvalidKeyPrefix,
 
+    #[error("metadata segment missing '163 key(Don't modify):' header")]
+    InvalidMetaHeader,
+
     #[error("metadata missing 'music:' prefix")]
     InvalidMetaPrefix,
 

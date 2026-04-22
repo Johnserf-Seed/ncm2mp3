@@ -1,58 +1,28 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Arg, ArgAction, ArgMatches, Command};
 
-#[derive(Parser, Debug, Clone)]
-#[command(
-    name = "ncm2mp3",
-    version,
-    about = "Decrypt Netease Cloud Music NCM files to their original audio format",
-    long_about = None,
-)]
+use crate::i18n::{Lang, Strings};
+
+/// Parsed CLI arguments, flat struct preserved across the pipeline.
+#[derive(Debug, Clone)]
 pub struct Cli {
-    /// Input .ncm file or a directory of .ncm files
-    #[arg(value_name = "INPUT")]
     pub input: PathBuf,
-
-    /// Output directory (defaults to the input's parent directory)
-    #[arg(short, long, value_name = "DIR")]
     pub output: Option<PathBuf>,
-
-    /// Filename template. Available placeholders:
-    /// {artist} {album} {title} {format} {bitrate}.
-    /// Forward slashes create subdirectories; the extension is appended
-    /// automatically based on the detected audio format.
-    #[arg(short, long, default_value = "{title}", value_name = "TEMPLATE")]
-    pub template: String,
-
-    /// Recurse into subdirectories when INPUT is a directory
-    #[arg(short, long)]
+    /// When `None`, the pipeline preserves the input file's stem verbatim and
+    /// only swaps the extension. A template is only applied when the user
+    /// explicitly passes `--template`.
+    pub template: Option<String>,
     pub recursive: bool,
-
-    /// Only process files whose internal format matches (e.g. mp3,flac).
-    /// Can be repeated or comma-separated.
-    #[arg(long, value_delimiter = ',', value_name = "FMT")]
     pub format: Vec<String>,
-
-    /// Do not write ID3/Vorbis tags or embed cover art
-    #[arg(long)]
     pub no_tag: bool,
-
-    /// Number of parallel workers (default: number of CPU cores)
-    #[arg(short = 'j', long, value_name = "N")]
     pub jobs: Option<usize>,
-
-    /// Overwrite existing output files instead of skipping them
-    #[arg(long)]
     pub overwrite: bool,
-
-    /// Print what would be done without writing any output files
-    #[arg(long)]
     pub dry_run: bool,
-
-    /// Increase log verbosity (-v for info, -vv for debug)
-    #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
+    /// Retained for diagnostics and future locale-aware logic.
+    #[allow(dead_code)]
+    pub lang: Lang,
 }
 
 impl Cli {
@@ -62,5 +32,121 @@ impl Cli {
             1 => log::LevelFilter::Info,
             _ => log::LevelFilter::Debug,
         }
+    }
+}
+
+/// Build the clap `Command` with help text from the chosen translation table.
+///
+/// We use the builder API instead of `#[derive(Parser)]` because derive
+/// attributes require `&'static str` literals, which means the help text is
+/// baked in at compile time. The builder lets us swap tables at runtime based
+/// on locale detection.
+pub fn build_command(s: &'static Strings) -> Command {
+    Command::new("ncm2mp3")
+        .version(env!("CARGO_PKG_VERSION"))
+        .about(s.cli_about)
+        .arg(
+            Arg::new("input")
+                .value_name(s.val_input)
+                .help(s.arg_input)
+                .required(true)
+                .value_parser(clap::value_parser!(PathBuf)),
+        )
+        .arg(
+            Arg::new("output")
+                .short('o')
+                .long("output")
+                .value_name(s.val_dir)
+                .help(s.arg_output)
+                .value_parser(clap::value_parser!(PathBuf)),
+        )
+        .arg(
+            Arg::new("template")
+                .short('t')
+                .long("template")
+                .value_name(s.val_template)
+                .help(s.arg_template),
+        )
+        .arg(
+            Arg::new("recursive")
+                .short('r')
+                .long("recursive")
+                .help(s.arg_recursive)
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("format")
+                .long("format")
+                .value_name(s.val_fmt)
+                .value_delimiter(',')
+                .help(s.arg_format)
+                .action(ArgAction::Append),
+        )
+        .arg(
+            Arg::new("no-tag")
+                .long("no-tag")
+                .help(s.arg_no_tag)
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("jobs")
+                .short('j')
+                .long("jobs")
+                .value_name(s.val_n)
+                .help(s.arg_jobs)
+                .value_parser(clap::value_parser!(usize)),
+        )
+        .arg(
+            Arg::new("overwrite")
+                .long("overwrite")
+                .help(s.arg_overwrite)
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("dry-run")
+                .long("dry-run")
+                .help(s.arg_dry_run)
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("verbose")
+                .short('v')
+                .long("verbose")
+                .help(s.arg_verbose)
+                .action(ArgAction::Count),
+        )
+        .arg(
+            Arg::new("lang")
+                .short('L')
+                .long("lang")
+                .value_name(s.val_lang)
+                .help(s.arg_lang)
+                .env("NCM2MP3_LANG")
+                .value_parser(["en", "zh"]),
+        )
+}
+
+/// Convert matched args into the flat `Cli` struct used by the pipeline.
+pub fn cli_from_matches(matches: &ArgMatches, lang: Lang) -> Cli {
+    let format = matches
+        .get_many::<String>("format")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
+
+    Cli {
+        input: matches
+            .get_one::<PathBuf>("input")
+            .cloned()
+            .expect("input is required"),
+        output: matches.get_one::<PathBuf>("output").cloned(),
+        template: matches.get_one::<String>("template").cloned(),
+        recursive: matches.get_flag("recursive"),
+        format,
+        no_tag: matches.get_flag("no-tag"),
+        jobs: matches.get_one::<usize>("jobs").copied(),
+        overwrite: matches.get_flag("overwrite"),
+        dry_run: matches.get_flag("dry-run"),
+        verbose: matches.get_count("verbose"),
+        lang,
     }
 }

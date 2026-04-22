@@ -10,7 +10,10 @@ use cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyInit};
 use ecb::Encryptor;
 
 use ncm_core::crypto::NcmStreamCipher;
-use ncm_core::format::{AudioFormat, CORE_KEY, KEY_PREFIX, KEY_XOR_MASK, MAGIC, META_KEY, META_PREFIX, META_XOR_MASK};
+use ncm_core::format::{
+    AudioFormat, CORE_KEY, KEY_PREFIX, KEY_XOR_MASK, MAGIC, META_KEY, META_PLAIN_PREFIX,
+    META_PREFIX, META_XOR_MASK,
+};
 use ncm_core::NcmDecoder;
 
 type Aes128EcbEnc = Encryptor<Aes128>;
@@ -35,7 +38,12 @@ fn build_synthetic_ncm(audio: &[u8], metadata_json: &str, cover: Option<&[u8]>) 
     meta_plain.extend_from_slice(metadata_json.as_bytes());
     let meta_aes = aes_encrypt(&META_KEY, &meta_plain);
     let meta_b64 = BASE64.encode(&meta_aes);
-    let mut meta_segment: Vec<u8> = meta_b64.into_bytes();
+
+    // Pre-base64, the real NCM format prepends a 22-byte ASCII tag so we
+    // mirror that here before the XOR obfuscation step.
+    let mut meta_segment: Vec<u8> = Vec::new();
+    meta_segment.extend_from_slice(META_PLAIN_PREFIX);
+    meta_segment.extend_from_slice(meta_b64.as_bytes());
     for byte in &mut meta_segment {
         *byte ^= META_XOR_MASK;
     }

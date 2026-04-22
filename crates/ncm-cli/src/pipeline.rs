@@ -13,6 +13,7 @@ use rayon::prelude::*;
 use walkdir::WalkDir;
 
 use crate::cli::Cli;
+use crate::i18n::t;
 use crate::progress::{build_bar, build_multi};
 use crate::{tagger, template};
 
@@ -26,7 +27,11 @@ pub struct RunSummary {
 pub fn run(args: &Cli) -> Result<RunSummary> {
     let files = collect_inputs(&args.input, args.recursive)?;
     if files.is_empty() {
-        log::warn!("no .ncm files found under {}", args.input.display());
+        log::warn!(
+            "{}",
+            t().msg_no_files
+                .replace("{path}", &args.input.display().to_string())
+        );
         return Ok(RunSummary {
             ok: 0,
             skipped: 0,
@@ -34,7 +39,10 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
         });
     }
 
-    log::info!("queued {} file(s) for processing", files.len());
+    log::info!(
+        "{}",
+        t().msg_queued.replace("{count}", &files.len().to_string())
+    );
 
     let multi = build_multi();
     let pb = build_bar(&multi, files.len() as u64);
@@ -55,11 +63,16 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
                 }
                 Ok(Outcome::Skipped(reason)) => {
                     skipped.fetch_add(1, Ordering::Relaxed);
-                    log::info!("skipped {}: {reason}", input.display());
+                    log::info!("{}: {reason}", input.display());
                 }
                 Ok(Outcome::DryRun(path)) => {
                     ok.fetch_add(1, Ordering::Relaxed);
-                    println!("[dry-run] {} -> {}", input.display(), path.display());
+                    println!(
+                        "{} {} -> {}",
+                        t().msg_dry_run_prefix,
+                        input.display(),
+                        path.display()
+                    );
                 }
                 Err(e) => {
                     failed.fetch_add(1, Ordering::Relaxed);
@@ -70,7 +83,7 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
         });
     });
 
-    pb.finish_with_message("done");
+    pb.finish_with_message(t().msg_progress_done);
 
     Ok(RunSummary {
         ok: ok.load(Ordering::Relaxed),
@@ -83,7 +96,7 @@ fn thread_pool(jobs: Option<usize>) -> Result<rayon::ThreadPool> {
     let mut builder = rayon::ThreadPoolBuilder::new();
     if let Some(n) = jobs {
         if n == 0 {
-            bail!("--jobs must be >= 1");
+            bail!("{}", t().err_jobs_zero);
         }
         builder = builder.num_threads(n);
     }
@@ -94,7 +107,11 @@ fn thread_pool(jobs: Option<usize>) -> Result<rayon::ThreadPool> {
 
 fn collect_inputs(input: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
     if !input.exists() {
-        bail!("input path does not exist: {}", input.display());
+        bail!(
+            "{}",
+            t().msg_input_missing
+                .replace("{path}", &input.display().to_string())
+        );
     }
 
     if input.is_file() {
@@ -132,19 +149,21 @@ fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
     let format = headers.effective_format();
 
     if !args.format.is_empty() && !format_matches(&args.format, format) {
-        return Ok(Outcome::Skipped(format!(
-            "internal format {:?} not in --format filter",
-            format
-        )));
+        return Ok(Outcome::Skipped(
+            t().msg_skipped_fmt
+                .replace("{fmt}", format.extension())
+                .to_string(),
+        ));
     }
 
     let out_path = build_output_path(input, args, &headers, format)?;
 
     if out_path.exists() && !args.overwrite {
-        return Ok(Outcome::Skipped(format!(
-            "output exists: {}",
-            out_path.display()
-        )));
+        return Ok(Outcome::Skipped(
+            t().msg_skipped_exists
+                .replace("{path}", &out_path.display().to_string())
+                .to_string(),
+        ));
     }
 
     if args.dry_run {
@@ -168,8 +187,9 @@ fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
     if !args.no_tag {
         if let Err(e) = tagger::write_tags(&out_path, &headers.metadata, headers.cover.as_ref()) {
             log::warn!(
-                "tagging failed for {} (file still decrypted): {e:#}",
-                out_path.display()
+                "{}: {e:#}",
+                t().msg_tagging_failed
+                    .replace("{path}", &out_path.display().to_string())
             );
         }
     }
@@ -193,19 +213,35 @@ fn build_output_path(
         Some(dir) => dir.clone(),
         None => input
             .parent()
-            .ok_or_else(|| anyhow!("input has no parent directory"))?
+            .ok_or_else(|| anyhow!("{}", t().err_no_parent))?
             .to_path_buf(),
     };
 
-    let stem = template::render_stem(&args.template, &headers.metadata, format)?;
     let ext = format.extension();
-
-    // Append the template stem as relative segments so embedded `/` in the
-    // template becomes real subdirectories.
     let mut out = base;
-    for seg in stem.split(['/', '\\']).filter(|s| !s.is_empty()) {
-        out.push(seg);
+
+    match &args.template {
+        Some(tmpl) => {
+            // Template drives naming: split on `/`\\` so the template can
+            // carve subdirectories under the output base.
+            let stem = template::render_stem(tmpl, &headers.metadata, format)?;
+            for seg in stem.split(['/', '\\']).filter(|s| !s.is_empty()) {
+                out.push(seg);
+            }
+        }
+        None => {
+            // Default: preserve the input file's stem verbatim, just switch
+            // the extension to the detected audio format. No sanitization —
+            // if the name is valid on disk going in, it's valid going out.
+            let stem = input
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("unknown");
+            out.push(stem);
+        }
     }
+
     out.set_extension(ext);
     Ok(out)
 }
