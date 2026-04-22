@@ -11,13 +11,42 @@ use crate::i18n::{Lang, Strings};
 pub enum CliCommand {
     Decrypt(Cli),
     Info(InfoArgs),
+    Cover(CoverArgs),
     Completion(Shell),
+}
+
+/// What to do when the output file already exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictStrategy {
+    /// Leave the existing file alone and count it as skipped (default).
+    Skip,
+    /// Overwrite the existing file.
+    Overwrite,
+    /// Append `-1`, `-2`, … to the stem until a free path is found.
+    Rename,
+}
+
+impl ConflictStrategy {
+    /// Parse the string coming from `--on-conflict`.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "skip" => Some(Self::Skip),
+            "overwrite" => Some(Self::Overwrite),
+            "rename" => Some(Self::Rename),
+            _ => None,
+        }
+    }
 }
 
 /// Decrypt-mode arguments, flat struct preserved across the pipeline.
 #[derive(Debug, Clone)]
 pub struct Cli {
-    pub input: PathBuf,
+    /// Positional `<INPUT>`. May be `None` when the user passes only
+    /// `--from-file <list>`.
+    pub input: Option<PathBuf>,
+    /// Additional input sources read from a text file, one path per line
+    /// (lines starting with `#` and blank lines are ignored).
+    pub from_file: Option<PathBuf>,
     pub output: Option<PathBuf>,
     /// When `None`, the pipeline preserves the input file's stem verbatim and
     /// only swaps the extension. A template is only applied when the user
@@ -28,7 +57,8 @@ pub struct Cli {
     pub no_tag: bool,
     pub folder: bool,
     pub jobs: Option<usize>,
-    pub overwrite: bool,
+    /// What to do when an output file already exists.
+    pub on_conflict: ConflictStrategy,
     pub dry_run: bool,
     pub verbose: u8,
     /// Retained for diagnostics and future locale-aware logic.
@@ -53,6 +83,16 @@ pub struct InfoArgs {
     pub recursive: bool,
 }
 
+/// `cover` subcommand args: extract the embedded cover image without
+/// decrypting the audio.
+#[derive(Debug, Clone)]
+pub struct CoverArgs {
+    pub input: PathBuf,
+    pub output: Option<PathBuf>,
+    pub recursive: bool,
+    pub overwrite: bool,
+}
+
 /// Build the clap `Command` with help text from the chosen translation table.
 ///
 /// We use the builder API instead of `#[derive(Parser)]` because derive
@@ -70,7 +110,16 @@ pub fn build_command(s: &'static Strings) -> Command {
             Arg::new("input")
                 .value_name(s.val_input)
                 .help(s.arg_input)
-                .required(true)
+                // INPUT becomes optional when --from-file supplies the list;
+                // clap's `required_unless_present` handles "either-or" cleanly.
+                .required_unless_present("from-file")
+                .value_parser(clap::value_parser!(PathBuf)),
+        )
+        .arg(
+            Arg::new("from-file")
+                .long("from-file")
+                .value_name(s.val_path)
+                .help(s.arg_from_file)
                 .value_parser(clap::value_parser!(PathBuf)),
         )
         .arg(
@@ -125,6 +174,14 @@ pub fn build_command(s: &'static Strings) -> Command {
                 .value_parser(clap::value_parser!(usize)),
         )
         .arg(
+            Arg::new("on-conflict")
+                .long("on-conflict")
+                .value_name(s.val_conflict)
+                .help(s.arg_on_conflict)
+                .value_parser(["skip", "overwrite", "rename"])
+                .conflicts_with("overwrite"),
+        )
+        .arg(
             Arg::new("overwrite")
                 .long("overwrite")
                 .help(s.arg_overwrite)
@@ -171,6 +228,38 @@ pub fn build_command(s: &'static Strings) -> Command {
                 ),
         )
         .subcommand(
+            Command::new("cover")
+                .about(s.cmd_cover_about)
+                .arg(
+                    Arg::new("input")
+                        .value_name(s.val_input)
+                        .help(s.arg_cover_input)
+                        .required(true)
+                        .value_parser(clap::value_parser!(PathBuf)),
+                )
+                .arg(
+                    Arg::new("output")
+                        .short('o')
+                        .long("output")
+                        .value_name(s.val_dir)
+                        .help(s.arg_output)
+                        .value_parser(clap::value_parser!(PathBuf)),
+                )
+                .arg(
+                    Arg::new("recursive")
+                        .short('r')
+                        .long("recursive")
+                        .help(s.arg_recursive)
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("overwrite")
+                        .long("overwrite")
+                        .help(s.arg_overwrite)
+                        .action(ArgAction::SetTrue),
+                ),
+        )
+        .subcommand(
             Command::new("completion")
                 .about(s.cmd_completion_about)
                 .arg(
@@ -193,6 +282,15 @@ pub fn parse(matches: &ArgMatches, lang: Lang) -> Result<CliCommand> {
                 .ok_or_else(|| anyhow!("info input is required"))?,
             recursive: sub.get_flag("recursive"),
         })),
+        Some(("cover", sub)) => Ok(CliCommand::Cover(CoverArgs {
+            input: sub
+                .get_one::<PathBuf>("input")
+                .cloned()
+                .ok_or_else(|| anyhow!("cover input is required"))?,
+            output: sub.get_one::<PathBuf>("output").cloned(),
+            recursive: sub.get_flag("recursive"),
+            overwrite: sub.get_flag("overwrite"),
+        })),
         Some(("completion", sub)) => {
             let shell = sub
                 .get_one::<Shell>("shell")
@@ -211,11 +309,22 @@ fn cli_from_matches(matches: &ArgMatches, lang: Lang) -> Cli {
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
 
+    // Conflict strategy: `--on-conflict` wins when set; otherwise the legacy
+    // `--overwrite` flag maps to `Overwrite`; otherwise default `Skip`.
+    let on_conflict = matches
+        .get_one::<String>("on-conflict")
+        .and_then(|s| ConflictStrategy::parse(s))
+        .unwrap_or_else(|| {
+            if matches.get_flag("overwrite") {
+                ConflictStrategy::Overwrite
+            } else {
+                ConflictStrategy::Skip
+            }
+        });
+
     Cli {
-        input: matches
-            .get_one::<PathBuf>("input")
-            .cloned()
-            .expect("input is required"),
+        input: matches.get_one::<PathBuf>("input").cloned(),
+        from_file: matches.get_one::<PathBuf>("from-file").cloned(),
         output: matches.get_one::<PathBuf>("output").cloned(),
         template: matches.get_one::<String>("template").cloned(),
         recursive: matches.get_flag("recursive"),
@@ -223,7 +332,7 @@ fn cli_from_matches(matches: &ArgMatches, lang: Lang) -> Cli {
         no_tag: matches.get_flag("no-tag"),
         folder: matches.get_flag("folder"),
         jobs: matches.get_one::<usize>("jobs").copied(),
-        overwrite: matches.get_flag("overwrite"),
+        on_conflict,
         dry_run: matches.get_flag("dry-run"),
         verbose: matches.get_count("verbose"),
         lang,

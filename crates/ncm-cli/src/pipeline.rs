@@ -1,11 +1,14 @@
 //! Orchestrate the full decrypt + tag workflow for single files and
 //! directories, with optional parallelism.
 
+use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs::{self, File};
-use std::io::BufWriter;
+use std::io::{BufRead, BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use console::style;
@@ -13,29 +16,41 @@ use ncm_core::{AudioFormat, Cover, CoverMime, NcmDecoder, NcmHeaders};
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::cli::Cli;
+use crate::cli::{Cli, ConflictStrategy};
 use crate::i18n::t;
 use crate::{tagger, template};
 
+/// Final per-run tallies surfaced to `main.rs` for the summary line.
 #[derive(Debug)]
 pub struct RunSummary {
     pub ok: usize,
     pub skipped: usize,
     pub failed: usize,
+    /// Wall-clock time from the start of `run()` to the end of the parallel
+    /// loop. Excludes argv parsing and summary formatting.
+    pub elapsed: Duration,
+    /// Per-format counts, keyed by the *effective* (sniffed or declared)
+    /// audio format of each successfully written file.
+    pub by_format: HashMap<AudioFormat, usize>,
 }
 
 pub fn run(args: &Cli) -> Result<RunSummary> {
-    let files = collect_inputs(&args.input, args.recursive)?;
+    let started = Instant::now();
+    let files = collect_inputs(args)?;
     if files.is_empty() {
-        log::warn!(
-            "{}",
-            t().msg_no_files
-                .replace("{path}", &args.input.display().to_string())
-        );
+        let hint_path = args
+            .input
+            .as_deref()
+            .or(args.from_file.as_deref())
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        log::warn!("{}", t().msg_no_files.replace("{path}", &hint_path));
         return Ok(RunSummary {
             ok: 0,
             skipped: 0,
             failed: 0,
+            elapsed: started.elapsed(),
+            by_format: HashMap::new(),
         });
     }
 
@@ -47,6 +62,7 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
     let ok = Arc::new(AtomicUsize::new(0));
     let skipped = Arc::new(AtomicUsize::new(0));
     let failed = Arc::new(AtomicUsize::new(0));
+    let by_format: Arc<Mutex<HashMap<AudioFormat, usize>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let pool = thread_pool(args.jobs)?;
 
@@ -54,8 +70,11 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
         files
             .par_iter()
             .for_each(|input| match process_one(input, args) {
-                Ok(Outcome::Written(path)) => {
+                Ok(Outcome::Written { path, format }) => {
                     ok.fetch_add(1, Ordering::Relaxed);
+                    if let Ok(mut map) = by_format.lock() {
+                        *map.entry(format).or_insert(0) += 1;
+                    }
                     eprintln!(
                         "{} {} -> {}",
                         style("✓").green().bold(),
@@ -83,10 +102,14 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
             });
     });
 
+    let by_format_final = by_format.lock().map(|m| m.clone()).unwrap_or_default();
+
     Ok(RunSummary {
         ok: ok.load(Ordering::Relaxed),
         skipped: skipped.load(Ordering::Relaxed),
         failed: failed.load(Ordering::Relaxed),
+        elapsed: started.elapsed(),
+        by_format: by_format_final,
     })
 }
 
@@ -101,7 +124,31 @@ fn thread_pool(jobs: Option<usize>) -> Result<rayon::ThreadPool> {
     builder.build().context("failed to build rayon thread pool")
 }
 
-fn collect_inputs(input: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
+/// Merge files from the positional INPUT (single file or directory) with
+/// `--from-file <list>` entries, deduped.
+fn collect_inputs(args: &Cli) -> Result<Vec<PathBuf>> {
+    let mut files: Vec<PathBuf> = Vec::new();
+
+    if let Some(input) = args.input.as_deref() {
+        files.extend(collect_from_path(input, args.recursive)?);
+    }
+
+    if let Some(list) = args.from_file.as_deref() {
+        for path in read_file_list(list)? {
+            files.extend(collect_from_path(&path, args.recursive)?);
+        }
+    }
+
+    files.sort();
+    files.dedup();
+    Ok(files)
+}
+
+/// Expand a single path into `.ncm` files it represents. A file path is
+/// returned as-is (regardless of extension, so the user can force a specific
+/// file even without `.ncm` suffix); a directory is walked with optional
+/// recursion, keeping only `.ncm` files.
+fn collect_from_path(input: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
     if !input.exists() {
         bail!(
             "{}",
@@ -109,11 +156,9 @@ fn collect_inputs(input: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
                 .replace("{path}", &input.display().to_string())
         );
     }
-
     if input.is_file() {
         return Ok(vec![input.to_path_buf()]);
     }
-
     let max_depth = if recursive { usize::MAX } else { 1 };
     let mut out = Vec::new();
     for entry in WalkDir::new(input).max_depth(max_depth) {
@@ -125,15 +170,42 @@ fn collect_inputs(input: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-fn has_ncm_extension(path: &Path) -> bool {
+/// Read a text file as a newline-separated list of paths. Blank lines and
+/// `#`-prefixed comments are ignored. Whitespace is trimmed.
+fn read_file_list(list_path: &Path) -> Result<Vec<PathBuf>> {
+    let file = File::open(list_path)
+        .with_context(|| format!("failed to open --from-file list: {}", list_path.display()))?;
+    let reader = BufReader::new(file);
+    let mut out = Vec::new();
+    for (idx, line) in reader.lines().enumerate() {
+        let line = line.with_context(|| {
+            format!("failed to read line {} of {}", idx + 1, list_path.display())
+        })?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        out.push(PathBuf::from(trimmed));
+    }
+    Ok(out)
+}
+
+/// Whether the given path has a (case-insensitive) `.ncm` extension.
+/// Shared with other modules (info, cover, …) via `pub(crate)`.
+pub(crate) fn has_ncm_extension(path: &Path) -> bool {
     path.extension()
-        .and_then(|s| s.to_str())
+        .and_then(OsStr::to_str)
         .map(|s| s.eq_ignore_ascii_case("ncm"))
         .unwrap_or(false)
 }
 
 enum Outcome {
-    Written(PathBuf),
+    /// Decryption produced the audio file at `path` with the sniffed or
+    /// declared `format`. Used to build the per-format breakdown.
+    Written {
+        path: PathBuf,
+        format: AudioFormat,
+    },
     DryRun(PathBuf),
     Skipped(String),
 }
@@ -152,15 +224,20 @@ fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
         ));
     }
 
-    let out_path = build_output_path(input, args, &headers, format)?;
+    let planned = build_output_path(input, args, &headers, format)?;
 
-    if out_path.exists() && !args.overwrite {
-        return Ok(Outcome::Skipped(
-            t().msg_skipped_exists
-                .replace("{path}", &out_path.display().to_string())
-                .to_string(),
-        ));
-    }
+    // Resolve conflict strategy to a concrete target path — or bail out as
+    // a "skipped" Outcome when policy says to leave the existing file alone.
+    let out_path = match resolve_conflict(&planned, args.on_conflict)? {
+        ConflictOutcome::Write(p) => p,
+        ConflictOutcome::Skip => {
+            return Ok(Outcome::Skipped(
+                t().msg_skipped_exists
+                    .replace("{path}", &planned.display().to_string())
+                    .to_string(),
+            ));
+        }
+    };
 
     if args.dry_run {
         return Ok(Outcome::DryRun(out_path));
@@ -192,7 +269,7 @@ fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
 
     if args.folder {
         if let Some(cover) = headers.cover.as_ref() {
-            if let Err(e) = write_cover_file(&out_path, cover) {
+            if let Err(e) = write_cover_next_to(&out_path, cover) {
                 log::warn!(
                     "failed to write external cover next to {}: {e:#}",
                     out_path.display()
@@ -201,13 +278,61 @@ fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
         }
     }
 
-    Ok(Outcome::Written(out_path))
+    Ok(Outcome::Written {
+        path: out_path,
+        format,
+    })
 }
 
-/// Drop the cover art as `cover.jpg`/`cover.png` next to the audio file.
-/// Skips silently when the MIME can't be classified (leaving a `.bin` blob
-/// next to a song would be more annoying than helpful).
-fn write_cover_file(audio_path: &Path, cover: &Cover) -> Result<()> {
+enum ConflictOutcome {
+    /// Write to this (possibly-renamed) path.
+    Write(PathBuf),
+    /// Existing file means this input should be skipped entirely.
+    Skip,
+}
+
+/// Apply the user's [`ConflictStrategy`] to a planned output path.
+fn resolve_conflict(planned: &Path, strategy: ConflictStrategy) -> Result<ConflictOutcome> {
+    if !planned.exists() {
+        return Ok(ConflictOutcome::Write(planned.to_path_buf()));
+    }
+    match strategy {
+        ConflictStrategy::Skip => Ok(ConflictOutcome::Skip),
+        ConflictStrategy::Overwrite => Ok(ConflictOutcome::Write(planned.to_path_buf())),
+        ConflictStrategy::Rename => find_free_rename(planned),
+    }
+}
+
+/// Probe `foo-1.ext`, `foo-2.ext`, … up to a reasonable ceiling.
+fn find_free_rename(planned: &Path) -> Result<ConflictOutcome> {
+    let parent = planned.parent().unwrap_or_else(|| Path::new(""));
+    let stem = planned
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .unwrap_or("output");
+    let ext = planned.extension().and_then(OsStr::to_str).unwrap_or("");
+
+    for n in 1..=9999u32 {
+        let candidate = if ext.is_empty() {
+            parent.join(format!("{stem}-{n}"))
+        } else {
+            parent.join(format!("{stem}-{n}.{ext}"))
+        };
+        if !candidate.exists() {
+            return Ok(ConflictOutcome::Write(candidate));
+        }
+    }
+    Err(anyhow!(
+        "{}",
+        t().err_rename_exhausted
+            .replace("{path}", &planned.display().to_string())
+    ))
+}
+
+/// Write a `Cover` as `cover.jpg` / `cover.png` in the same directory as
+/// `audio_path`. Exposed as `pub(crate)` so `cover.rs` can reuse the same
+/// extension logic.
+pub(crate) fn write_cover_next_to(audio_path: &Path, cover: &Cover) -> Result<()> {
     let ext = match cover.mime {
         CoverMime::Jpeg => "jpg",
         CoverMime::Png => "png",

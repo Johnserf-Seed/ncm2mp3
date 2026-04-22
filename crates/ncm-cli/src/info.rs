@@ -13,6 +13,7 @@ use walkdir::WalkDir;
 
 use crate::cli::InfoArgs;
 use crate::i18n::t;
+use crate::pipeline::has_ncm_extension;
 
 pub fn run(args: &InfoArgs) -> Result<()> {
     let files = collect(&args.input, args.recursive)?;
@@ -59,13 +60,6 @@ fn collect(input: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
         }
     }
     Ok(out)
-}
-
-fn has_ncm_extension(path: &Path) -> bool {
-    path.extension()
-        .and_then(|s| s.to_str())
-        .map(|s| s.eq_ignore_ascii_case("ncm"))
-        .unwrap_or(false)
 }
 
 fn print_one(path: &Path) -> Result<()> {

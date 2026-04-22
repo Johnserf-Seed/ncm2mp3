@@ -24,6 +24,8 @@ pub struct Strings {
     pub arg_folder: &'static str,
     pub arg_jobs: &'static str,
     pub arg_overwrite: &'static str,
+    pub arg_on_conflict: &'static str,
+    pub arg_from_file: &'static str,
     pub arg_dry_run: &'static str,
     pub arg_verbose: &'static str,
     pub arg_lang: &'static str,
@@ -31,9 +33,13 @@ pub struct Strings {
     // --- Subcommand help ---
     pub cmd_info_about: &'static str,
     pub arg_info_input: &'static str,
+    pub cmd_cover_about: &'static str,
+    pub arg_cover_input: &'static str,
     pub cmd_completion_about: &'static str,
     pub arg_completion_shell: &'static str,
     pub val_shell: &'static str,
+    pub val_path: &'static str,
+    pub val_conflict: &'static str,
 
     // --- `info` mode labels ---
     pub info_file: &'static str,
@@ -71,10 +77,21 @@ pub struct Strings {
     pub msg_input_missing: &'static str,
     /// `{ok}`, `{skipped}`, `{failed}`
     pub msg_summary: &'static str,
+    /// `{elapsed}` formatted like `1m23s`.
+    pub msg_summary_elapsed: &'static str,
+    /// `{breakdown}` is a space-joined list like `MP3:10 FLAC:3 M4A:1`.
+    pub msg_summary_breakdown: &'static str,
+    /// `{path}`
+    pub msg_cover_written: &'static str,
+    /// `{path}`
+    pub msg_cover_no_cover: &'static str,
+    /// `{path}`
+    pub msg_cover_unknown_mime: &'static str,
 
     // --- Errors ---
     pub err_jobs_zero: &'static str,
     pub err_no_parent: &'static str,
+    pub err_rename_exhausted: &'static str,
 }
 
 pub const EN: Strings = Strings {
@@ -88,16 +105,22 @@ pub const EN: Strings = Strings {
     arg_no_tag: "Do not write ID3/Vorbis tags or embed cover art",
     arg_folder: "Wrap each decrypted song in its own folder, and also drop the cover art as a separate cover.jpg/cover.png file inside it",
     arg_jobs: "Number of parallel workers (default: number of CPU cores)",
-    arg_overwrite: "Overwrite existing output files instead of skipping them",
+    arg_overwrite: "Overwrite existing output files instead of skipping them (alias for --on-conflict overwrite)",
+    arg_on_conflict: "What to do when an output file already exists: skip (default) / overwrite / rename (append -1, -2, ... until free)",
+    arg_from_file: "Read additional input paths from a text file (one path per line; # comments and blank lines ignored)",
     arg_dry_run: "Print what would be done without writing any output files",
     arg_verbose: "Increase log verbosity (-v for info, -vv for debug)",
     arg_lang: "UI language: en or zh (default: auto-detect from LANG/LC_ALL)",
 
     cmd_info_about: "Inspect NCM file metadata without decrypting the audio",
     arg_info_input: "Input .ncm file or a directory of .ncm files to inspect",
+    cmd_cover_about: "Extract the embedded cover image (cover.jpg/cover.png) without decrypting the audio",
+    arg_cover_input: "Input .ncm file or a directory of .ncm files whose covers should be extracted",
     cmd_completion_about: "Print a shell completion script to stdout (bash / zsh / fish / powershell / elvish)",
     arg_completion_shell: "Target shell",
     val_shell: "SHELL",
+    val_path: "PATH",
+    val_conflict: "STRATEGY",
 
     info_file: "File",
     info_size: "Size",
@@ -125,9 +148,15 @@ pub const EN: Strings = Strings {
     msg_tagging_failed: "tagging failed for {path} (file still decrypted)",
     msg_input_missing: "input path does not exist: {path}",
     msg_summary: "Done: {ok} ok, {skipped} skipped, {failed} failed",
+    msg_summary_elapsed: " ({elapsed})",
+    msg_summary_breakdown: " — {breakdown}",
+    msg_cover_written: "cover extracted -> {path}",
+    msg_cover_no_cover: "no embedded cover in {path}",
+    msg_cover_unknown_mime: "cover in {path} has unknown image type; skipping",
 
     err_jobs_zero: "--jobs must be >= 1",
     err_no_parent: "input has no parent directory",
+    err_rename_exhausted: "rename strategy ran out of suffixes (1..9999) for {path}",
 };
 
 pub const ZH: Strings = Strings {
@@ -141,16 +170,22 @@ pub const ZH: Strings = Strings {
     arg_no_tag: "不写入 ID3/Vorbis 标签，也不嵌入封面",
     arg_folder: "为每首歌创建独立的文件夹，并在文件夹内额外写入独立的 cover.jpg / cover.png 封面文件",
     arg_jobs: "并行 worker 数（默认：CPU 核心数）",
-    arg_overwrite: "覆盖已存在的输出文件，而不是跳过",
+    arg_overwrite: "覆盖已存在的输出文件（等价于 --on-conflict overwrite）",
+    arg_on_conflict: "输出文件已存在时的策略：skip（默认）/ overwrite / rename（自动追加 -1、-2 …）",
+    arg_from_file: "从文本文件读取额外的输入路径（一行一个；以 # 开头的行和空行被忽略）",
     arg_dry_run: "仅打印将要执行的操作，不写入任何文件",
     arg_verbose: "增加日志详细度（-v 显示 info，-vv 显示 debug）",
     arg_lang: "界面语言：en 或 zh（默认：从 LANG/LC_ALL 自动检测）",
 
     cmd_info_about: "查看 NCM 文件的元数据信息，不解密音频",
     arg_info_input: "要检查的 .ncm 文件或包含 .ncm 文件的目录",
+    cmd_cover_about: "导出内嵌的封面图片（cover.jpg / cover.png），不解密音频",
+    arg_cover_input: "要导出封面的 .ncm 文件或包含 .ncm 文件的目录",
     cmd_completion_about: "输出 shell 补全脚本到 stdout（bash / zsh / fish / powershell / elvish）",
     arg_completion_shell: "目标 shell",
     val_shell: "SHELL",
+    val_path: "路径",
+    val_conflict: "策略",
 
     info_file: "文件",
     info_size: "大小",
@@ -178,9 +213,15 @@ pub const ZH: Strings = Strings {
     msg_tagging_failed: "{path} 写入标签失败（音频已解密完成）",
     msg_input_missing: "输入路径不存在：{path}",
     msg_summary: "完成：{ok} 成功，{skipped} 跳过，{failed} 失败",
+    msg_summary_elapsed: "（用时 {elapsed}）",
+    msg_summary_breakdown: " —— {breakdown}",
+    msg_cover_written: "已导出封面 -> {path}",
+    msg_cover_no_cover: "{path} 不含内嵌封面",
+    msg_cover_unknown_mime: "{path} 的封面图片类型未知，已跳过",
 
     err_jobs_zero: "--jobs 必须 >= 1",
     err_no_parent: "输入路径没有父目录",
+    err_rename_exhausted: "rename 策略的后缀已用尽（1..9999）：{path}",
 };
 
 impl Lang {

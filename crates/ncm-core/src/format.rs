@@ -38,7 +38,7 @@ pub const STREAM_CHUNK_SIZE: usize = 32 * 1024;
 
 /// Audio format identified either from the metadata's `format` hint or from
 /// sniffing the decrypted audio's magic bytes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AudioFormat {
     /// MP3 (MPEG Audio Layer III), with or without ID3v2 tags.
     Mp3,
