@@ -253,4 +253,4 @@ NCM format reverse-engineering was a collective effort over the years. Thanks to
 
 ## License
 
-Dual-licensed MIT OR Apache-2.0, consistent with the Rust ecosystem. Intended for decrypting music **you legally own** for personal archival. Do not distribute copyrighted audio.
+Licensed under the [Apache License 2.0](./LICENSE). Intended for decrypting music **you legally own** for personal archival. Do not distribute copyrighted audio.
