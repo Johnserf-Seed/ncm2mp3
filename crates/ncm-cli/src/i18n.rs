@@ -31,6 +31,9 @@ pub struct Strings {
     // --- Subcommand help ---
     pub cmd_info_about: &'static str,
     pub arg_info_input: &'static str,
+    pub cmd_completion_about: &'static str,
+    pub arg_completion_shell: &'static str,
+    pub val_shell: &'static str,
 
     // --- `info` mode labels ---
     pub info_file: &'static str,
@@ -92,6 +95,9 @@ pub const EN: Strings = Strings {
 
     cmd_info_about: "Inspect NCM file metadata without decrypting the audio",
     arg_info_input: "Input .ncm file or a directory of .ncm files to inspect",
+    cmd_completion_about: "Print a shell completion script to stdout (bash / zsh / fish / powershell / elvish)",
+    arg_completion_shell: "Target shell",
+    val_shell: "SHELL",
 
     info_file: "File",
     info_size: "Size",
@@ -142,6 +148,9 @@ pub const ZH: Strings = Strings {
 
     cmd_info_about: "查看 NCM 文件的元数据信息，不解密音频",
     arg_info_input: "要检查的 .ncm 文件或包含 .ncm 文件的目录",
+    cmd_completion_about: "输出 shell 补全脚本到 stdout（bash / zsh / fish / powershell / elvish）",
+    arg_completion_shell: "目标 shell",
+    val_shell: "SHELL",
 
     info_file: "文件",
     info_size: "大小",

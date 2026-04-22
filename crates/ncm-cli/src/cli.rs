@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
+use clap_complete::Shell;
 
 use crate::i18n::{Lang, Strings};
 
@@ -10,6 +11,7 @@ use crate::i18n::{Lang, Strings};
 pub enum CliCommand {
     Decrypt(Cli),
     Info(InfoArgs),
+    Completion(Shell),
 }
 
 /// Decrypt-mode arguments, flat struct preserved across the pipeline.
@@ -168,6 +170,17 @@ pub fn build_command(s: &'static Strings) -> Command {
                         .action(ArgAction::SetTrue),
                 ),
         )
+        .subcommand(
+            Command::new("completion")
+                .about(s.cmd_completion_about)
+                .arg(
+                    Arg::new("shell")
+                        .value_name(s.val_shell)
+                        .help(s.arg_completion_shell)
+                        .required(true)
+                        .value_parser(clap::builder::EnumValueParser::<Shell>::new()),
+                ),
+        )
 }
 
 /// Dispatch parsed matches into the concrete command variant.
@@ -180,6 +193,13 @@ pub fn parse(matches: &ArgMatches, lang: Lang) -> Result<CliCommand> {
                 .ok_or_else(|| anyhow!("info input is required"))?,
             recursive: sub.get_flag("recursive"),
         })),
+        Some(("completion", sub)) => {
+            let shell = sub
+                .get_one::<Shell>("shell")
+                .copied()
+                .ok_or_else(|| anyhow!("completion shell is required"))?;
+            Ok(CliCommand::Completion(shell))
+        }
         _ => Ok(CliCommand::Decrypt(cli_from_matches(matches, lang))),
     }
 }

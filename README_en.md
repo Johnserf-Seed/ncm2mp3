@@ -126,6 +126,25 @@ $env:NCM2MP3_LANG = "zh"  # PowerShell
 # A Chinese-locale system shows Chinese UI out of the box.
 ```
 
+### Shell completion
+
+```bash
+# Bash
+ncm2mp3 completion bash > ~/.local/share/bash-completion/completions/ncm2mp3
+
+# Zsh
+ncm2mp3 completion zsh > ~/.zfunc/_ncm2mp3
+# Make sure ~/.zfunc is on $fpath
+
+# Fish
+ncm2mp3 completion fish > ~/.config/fish/completions/ncm2mp3.fish
+
+# PowerShell (append to $PROFILE)
+ncm2mp3 completion powershell | Out-String | Invoke-Expression
+```
+
+Supported shells: `bash` / `zsh` / `fish` / `powershell` / `elvish`.
+
 ## Template placeholders
 
 | Placeholder | Meaning | Example |

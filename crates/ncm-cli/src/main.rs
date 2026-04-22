@@ -16,14 +16,17 @@ fn main() -> Result<()> {
     let lang = prescan_lang().unwrap_or_else(Lang::detect_from_env);
     i18n::init(lang.strings());
 
-    let matches = cli::build_command(lang.strings()).get_matches();
+    // Build the clap command once; we reuse the same instance both for
+    // parsing argv and for generating shell completions.
+    let mut cmd = cli::build_command(lang.strings());
+    let matches = cmd.clone().get_matches();
     let command = cli::parse(&matches, lang)?;
 
-    // Verbose level only affects the decrypt pipeline for now; info mode
-    // prints its own structured output and doesn't need log plumbing.
+    // Verbose level only affects the decrypt pipeline for now; info and
+    // completion modes print their own structured output.
     let verbose = match &command {
         CliCommand::Decrypt(args) => args.log_level(),
-        CliCommand::Info(_) => log::LevelFilter::Warn,
+        CliCommand::Info(_) | CliCommand::Completion(_) => log::LevelFilter::Warn,
     };
     env_logger::Builder::new()
         .filter_level(verbose)
@@ -32,6 +35,9 @@ fn main() -> Result<()> {
         .init();
 
     match command {
+        CliCommand::Completion(shell) => {
+            clap_complete::generate(shell, &mut cmd, "ncm2mp3", &mut std::io::stdout());
+        }
         CliCommand::Info(args) => info::run(&args)?,
         CliCommand::Decrypt(args) => {
             let summary = pipeline::run(&args)?;

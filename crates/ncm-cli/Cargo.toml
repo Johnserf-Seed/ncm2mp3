@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 ncm-core = { path = "../ncm-core" }
 clap = { workspace = true }
+clap_complete = { workspace = true }
 anyhow = { workspace = true }
 lofty = { workspace = true }
 strfmt = { workspace = true }

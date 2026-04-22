@@ -126,6 +126,25 @@ $env:NCM2MP3_LANG = "zh"  # PowerShell
 # 中文 Windows/Linux 默认即为中文界面
 ```
 
+### Shell 自动补全
+
+```bash
+# Bash
+ncm2mp3 completion bash > ~/.local/share/bash-completion/completions/ncm2mp3
+
+# Zsh
+ncm2mp3 completion zsh > ~/.zfunc/_ncm2mp3
+# 然后确保 ~/.zfunc 在 $fpath 里
+
+# Fish
+ncm2mp3 completion fish > ~/.config/fish/completions/ncm2mp3.fish
+
+# PowerShell（追加到 $PROFILE）
+ncm2mp3 completion powershell | Out-String | Invoke-Expression
+```
+
+支持的 shell：`bash` / `zsh` / `fish` / `powershell` / `elvish`。
+
 ## 文件名模板占位符
 
 | 占位符 | 说明 | 示例 |
