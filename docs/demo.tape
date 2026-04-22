@@ -1,16 +1,20 @@
 # docs/demo.tape — vhs script to record docs/demo.gif
 #
-# Prerequisites:
-#   1. Install vhs: https://github.com/charmbracelet/vhs
-#      (macOS: `brew install vhs`, Windows/Linux: see releases page)
-#   2. Build a release binary first: `cargo build --release`
-#   3. Put a real (small, personally-owned) .ncm file at ./sample.ncm
-#      — the recording needs a live file to exercise the full flow.
+# Prerequisites (macOS / Linux):
+#   1. `brew install vhs ffmpeg`        (macOS)
+#   2. `cargo install --path crates/ncm-cli`
+#      (puts `ncm2mp3` on PATH via ~/.cargo/bin)
+#   3. Put a personally-owned `sample.ncm` at the project root.
 #
 # Regenerate:
 #   vhs docs/demo.tape
 #
-# Output: docs/demo.gif (referenced from README.md / README_en.md)
+# Output:
+#   docs/demo.gif
+#
+# Windows note: vhs has known PTY issues on Windows (several tapes hang
+# indefinitely on `Set Shell`). If you're on Windows, use ScreenToGif
+# (https://www.screentogif.com/) to record the same sequence by hand.
 
 Output docs/demo.gif
 
@@ -19,30 +23,25 @@ Set Width  960
 Set Height 540
 Set Theme  "Dracula"
 Set Padding 20
-Set Shell  "bash"
 
 # Scene 1: inspect a file without decrypting
-Type "./target/release/ncm2mp3 info sample.ncm"
-Sleep 500ms
+Type "ncm2mp3 info sample.ncm"
+Sleep 400ms
 Enter
-Sleep 2s
+Sleep 2500ms
 
 # Scene 2: decrypt a single file, default filename preservation
-Type "./target/release/ncm2mp3 sample.ncm -o ./out"
-Sleep 500ms
+Type "ncm2mp3 sample.ncm -o ./out"
+Sleep 400ms
 Enter
-Sleep 2s
+Sleep 2500ms
 
-# Scene 3: folder mode — wraps each song with a separate cover file
-Type "./target/release/ncm2mp3 sample.ncm -o ./out-folder -F"
-Sleep 500ms
+# Scene 3: folder mode — each song in its own folder + separate cover file
+Type "ncm2mp3 sample.ncm -o ./out-folder -F"
+Sleep 400ms
 Enter
-Sleep 1500ms
-Type "ls ./out-folder/*/"
+Sleep 2000ms
+Type "ls out-folder/"
+Sleep 300ms
 Enter
-Sleep 2s
-
-# Fin
-Type "clear"
-Enter
-Sleep 500ms
+Sleep 2500ms

@@ -18,3 +18,11 @@ target/
 
 # Claude Code worktrees and session state (nested inside the repo)
 .claude/
+
+# Demo recording artifacts (see docs/demo.tape).
+# `sample.ncm` is whatever the local user dropped in for vhs; never their
+# concern to share. Same for the temporary exe/out dirs the tape produces.
+/sample.ncm
+/ncm2mp3.exe
+/out/
+/out-folder/
