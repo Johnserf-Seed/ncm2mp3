@@ -10,7 +10,7 @@
 //! Open an NCM file and stream the decrypted audio into any `Write`:
 //!
 //! ```no_run
-//! use ncm_core::NcmDecoder;
+//! use ncm2mp3_core::NcmDecoder;
 //!
 //! let (mut decoder, headers) = NcmDecoder::open("song.ncm").unwrap();
 //! let mut out = std::fs::File::create("song.mp3").unwrap();

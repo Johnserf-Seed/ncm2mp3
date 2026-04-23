@@ -1,5 +1,5 @@
 [package]
-name = "ncm-core"
+name = "ncm2mp3-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

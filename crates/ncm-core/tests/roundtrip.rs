@@ -9,12 +9,12 @@ use base64::Engine;
 use cipher::{block_padding::Pkcs7, BlockModeEncrypt, KeyInit};
 use ecb::Encryptor;
 
-use ncm_core::crypto::NcmStreamCipher;
-use ncm_core::format::{
+use ncm2mp3_core::crypto::NcmStreamCipher;
+use ncm2mp3_core::format::{
     AudioFormat, CORE_KEY, KEY_PREFIX, KEY_XOR_MASK, MAGIC, META_KEY, META_PLAIN_PREFIX,
     META_PREFIX, META_XOR_MASK,
 };
-use ncm_core::NcmDecoder;
+use ncm2mp3_core::NcmDecoder;
 
 type Aes128EcbEnc = Encryptor<Aes128>;
 
@@ -96,7 +96,7 @@ fn roundtrip_mp3_payload() {
     assert_eq!(headers.effective_format(), AudioFormat::Mp3);
     assert!(headers.cover.is_some());
     let cover = headers.cover.as_ref().unwrap();
-    assert_eq!(cover.mime, ncm_core::CoverMime::Jpeg);
+    assert_eq!(cover.mime, ncm2mp3_core::CoverMime::Jpeg);
 
     let mut out = Vec::new();
     let written = decoder.decode_to_writer(&mut out).unwrap();
