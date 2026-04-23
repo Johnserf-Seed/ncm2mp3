@@ -1,21 +1,30 @@
 [package]
-name = "ncm-cli"
+name = "ncm2mp3"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "CLI to decrypt Netease Cloud Music NCM files"
+description = "Decrypt Netease Cloud Music NCM files to their original audio format (MP3/FLAC/M4A). Rust CLI with tags, cover art, filename templates, per-song folder mode, parallel batching, watch mode, shell completions, and bilingual EN/ZH UI."
+readme = "README.md"
+documentation = "https://github.com/Johnserf-Seed/ncm2mp3/blob/main/README_en.md"
+homepage = "https://github.com/Johnserf-Seed/ncm2mp3"
+keywords = ["ncm", "netease", "cloudmusic", "decrypt", "audio"]
+categories = ["multimedia::audio", "command-line-utilities", "encoding"]
+rust-version = "1.75"
 
 [[bin]]
 name = "ncm2mp3"
 path = "src/main.rs"
 
 [dependencies]
-# Published to crates.io as `ncm2mp3-core` (the `ncm-core` slot was taken).
-# Aliasing it back to `ncm-core` via `package = ...` keeps the existing
-# `use ncm_core::…` source unchanged.
-ncm-core = { path = "../ncm-core", package = "ncm2mp3-core" }
+# The crate is published on crates.io as `ncm2mp3-core` (the `ncm-core`
+# slot was taken by an unrelated project). The `package = "..."` rename
+# lets our source keep using the shorter `use ncm_core::…` form. A
+# `version = "..."` is required here so the package can be published —
+# cargo uses it when resolving the dep from crates.io, and falls back
+# to `path` during local dev.
+ncm-core = { path = "../ncm-core", package = "ncm2mp3-core", version = "0.3.0" }
 clap = { workspace = true }
 clap_complete = { workspace = true }
 anyhow = { workspace = true }
