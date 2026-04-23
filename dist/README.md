@@ -11,30 +11,35 @@ Both point at prebuilt binaries on the [Releases page](https://github.com/Johnse
 
 ## Bumping the version
 
-When you tag a new `vX.Y.Z`:
+**Automatic** — do nothing. Since v0.3.0 the
+[`.github/workflows/update-dist.yml`](../.github/workflows/update-dist.yml)
+workflow fires when a Release is published, fetches the 6 SHA256 hashes
+from the release's `.sha256` sibling files, splices them + the new
+version into both manifests, and opens a PR (branch `dist-sync/vX.Y.Z`)
+for you to review and merge.
 
-1. **Wait** for the Release workflow to finish uploading archives + `.sha256` files.
-2. **Update Scoop manifest** (`scoop/ncm2mp3.json`):
-   - Change `version` to `X.Y.Z`.
-   - Update the two `url` entries under `architecture` to point at the new release.
-   - Update the two `hash` entries. Get the hashes from the `.sha256` siblings on the Releases page:
-     ```bash
-     for target in x86_64-pc-windows-msvc aarch64-pc-windows-msvc; do
-       url="https://github.com/Johnserf-Seed/ncm2mp3/releases/download/vX.Y.Z/ncm2mp3-vX.Y.Z-${target}.zip.sha256"
-       echo "${target}: $(curl -sL "$url" | awk '{print $1}')"
-     done
-     ```
-   - Update the `bin` path if the archive layout changes (unlikely).
+To trigger manually (e.g. to backfill an old tag or retry after a fix):
 
-3. **Update Homebrew formula** (`homebrew/ncm2mp3.rb`):
-   - Change the `version "X.Y.Z"` line.
-   - Fetch the 4 macOS/Linux archive SHA256s (same pattern as above, but
-     with `aarch64-apple-darwin`, `x86_64-apple-darwin`,
-     `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu` targets
-     and `.tar.gz.sha256` extension).
-   - Paste the four hashes into the four `sha256` lines.
+```bash
+gh workflow run update-dist.yml -f tag=vX.Y.Z
+```
 
-4. Commit + push. No tag needed for manifest updates.
+### If you really need to do it by hand
+
+1. Wait for Release to finish uploading archives + `.sha256` files.
+2. Grab the 6 hashes:
+   ```bash
+   for t in \
+     x86_64-pc-windows-msvc aarch64-pc-windows-msvc \
+     x86_64-apple-darwin aarch64-apple-darwin \
+     x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
+   do
+     ext=zip; [[ "$t" == *linux* || "$t" == *darwin* ]] && ext=tar.gz
+     printf "%-35s" "$t:"
+     curl -sL "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/vX.Y.Z/ncm2mp3-vX.Y.Z-${t}.${ext}.sha256" | awk '{print $1}'
+   done
+   ```
+3. Paste: 2 hashes (Windows) into `scoop/ncm2mp3.json`, 4 hashes (macOS+Linux) into `homebrew/ncm2mp3.rb`; bump `version` in both. Commit + push.
 
 ## Why not a dedicated tap / bucket repo?
 

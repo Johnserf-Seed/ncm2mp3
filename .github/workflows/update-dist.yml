@@ -1,0 +1,204 @@
+name: Update dist manifests
+
+# Fires after a Release is fully published (release.yml uploaded all
+# archives + their .sha256 siblings). Pulls the 6 SHA256 hashes off the
+# release, splices them + the new version into the Scoop manifest and
+# Homebrew formula, and opens a PR with the diff for review.
+#
+# This way the manual "copy-paste 6 hashes" step from dist/README.md
+# is handled automatically every tag.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    # Manual trigger for backfilling older tags or re-running after a fix.
+    inputs:
+      tag:
+        description: "Release tag to sync (e.g. v0.3.0)"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-dist-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    # Skip for pre-releases (draft / prerelease tags) unless manually dispatched.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.release.draft == false && github.event.release.prerelease == false)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # Need enough history so the PR branch can fork cleanly off main.
+          fetch-depth: 0
+
+      - name: Resolve tag + version
+        id: ver
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          if [[ -z "$TAG" ]]; then
+            echo "no tag provided"; exit 1
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch SHA256s from release assets
+        id: hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.ver.outputs.tag }}"
+          BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}/ncm2mp3-${TAG}"
+
+          # Pull each .sha256 file (emitted by release.yml as of v0.4+). If
+          # any fetch returns empty, fail loudly — missing hashes would
+          # silently ship `TO_BE_FILLED_IN` placeholders into the manifest.
+          get() {
+            local target="$1" ext="$2"
+            local url="${BASE}-${target}.${ext}.sha256"
+            local raw
+            raw=$(curl -fsSL "$url" | awk '{print $1}')
+            if [[ -z "$raw" ]]; then
+              echo "empty hash from $url" >&2
+              exit 1
+            fi
+            echo "$raw"
+          }
+
+          echo "win_x64=$(get x86_64-pc-windows-msvc zip)"             >> "$GITHUB_OUTPUT"
+          echo "win_a64=$(get aarch64-pc-windows-msvc zip)"            >> "$GITHUB_OUTPUT"
+          echo "mac_x64=$(get x86_64-apple-darwin tar.gz)"             >> "$GITHUB_OUTPUT"
+          echo "mac_a64=$(get aarch64-apple-darwin tar.gz)"            >> "$GITHUB_OUTPUT"
+          echo "lin_x64=$(get x86_64-unknown-linux-gnu tar.gz)"        >> "$GITHUB_OUTPUT"
+          echo "lin_a64=$(get aarch64-unknown-linux-gnu tar.gz)"       >> "$GITHUB_OUTPUT"
+
+      - name: Rewrite Scoop manifest
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          TAG:     ${{ steps.ver.outputs.tag }}
+          WIN_X64: ${{ steps.hashes.outputs.win_x64 }}
+          WIN_A64: ${{ steps.hashes.outputs.win_a64 }}
+        run: |
+          python3 <<'PY'
+          import json, os
+
+          version = os.environ["VERSION"]
+          tag     = os.environ["TAG"]
+          win_x64 = os.environ["WIN_X64"]
+          win_a64 = os.environ["WIN_A64"]
+          base    = f"https://github.com/Johnserf-Seed/ncm2mp3/releases/download/{tag}"
+
+          path = "dist/scoop/ncm2mp3.json"
+          with open(path, "r", encoding="utf-8") as f:
+              m = json.load(f)
+
+          m["version"] = version
+          m["architecture"]["64bit"]["url"]  = f"{base}/ncm2mp3-{tag}-x86_64-pc-windows-msvc.zip"
+          m["architecture"]["64bit"]["hash"] = f"sha256:{win_x64}"
+          m["architecture"]["arm64"]["url"]  = f"{base}/ncm2mp3-{tag}-aarch64-pc-windows-msvc.zip"
+          m["architecture"]["arm64"]["hash"] = f"sha256:{win_a64}"
+          m["bin"] = f"ncm2mp3-{tag}-x86_64-pc-windows-msvc\\ncm2mp3.exe"
+
+          with open(path, "w", encoding="utf-8", newline="\n") as f:
+              json.dump(m, f, indent=4, ensure_ascii=False)
+              f.write("\n")
+          print(f"Updated {path} to {version}")
+          PY
+
+      - name: Rewrite Homebrew formula
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          MAC_A64: ${{ steps.hashes.outputs.mac_a64 }}
+          MAC_X64: ${{ steps.hashes.outputs.mac_x64 }}
+          LIN_A64: ${{ steps.hashes.outputs.lin_a64 }}
+          LIN_X64: ${{ steps.hashes.outputs.lin_x64 }}
+        run: |
+          python3 <<'PY'
+          import os, re
+
+          version = os.environ["VERSION"]
+          # The formula has four `sha256 "..."` lines in this source order:
+          # on_macos/on_arm, on_macos/on_intel, on_linux/on_arm, on_linux/on_intel.
+          hashes = [
+              os.environ["MAC_A64"],
+              os.environ["MAC_X64"],
+              os.environ["LIN_A64"],
+              os.environ["LIN_X64"],
+          ]
+
+          path = "dist/homebrew/ncm2mp3.rb"
+          with open(path, "r", encoding="utf-8") as f:
+              src = f.read()
+
+          # Bump the single `version "..."` line at the top.
+          src, n = re.subn(r'version\s+"[^"]*"', f'version "{version}"', src, count=1)
+          if n != 1:
+              raise SystemExit(f"expected 1 version line, replaced {n}")
+
+          # Replace the 4 sha256 lines in order — re.sub with an iterator
+          # yields one replacement per call.
+          it = iter(hashes)
+          def repl(_m):
+              return f'sha256 "{next(it)}"'
+          src, n = re.subn(r'sha256\s+"[^"]*"', repl, src, count=4)
+          if n != 4:
+              raise SystemExit(f"expected 4 sha256 lines, replaced {n}")
+
+          with open(path, "w", encoding="utf-8", newline="\n") as f:
+              f.write(src)
+          print(f"Updated {path} to {version}")
+          PY
+
+      - name: Verify nothing obvious broke
+        run: |
+          # JSON must still be parseable.
+          python3 -c "import json; json.load(open('dist/scoop/ncm2mp3.json'))"
+          # Ruby syntax check so we don't land a malformed formula.
+          ruby -c dist/homebrew/ncm2mp3.rb
+
+      - name: Open PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            chore(dist): sync scoop + homebrew manifests for ${{ steps.ver.outputs.tag }}
+
+            Auto-generated by .github/workflows/update-dist.yml after the
+            ${{ steps.ver.outputs.tag }} release completed. Pulls the
+            SHA256 hashes from the release's .sha256 sibling files and
+            splices them + the new version into both manifests.
+          title: "chore(dist): sync manifests for ${{ steps.ver.outputs.tag }}"
+          body: |
+            Auto-generated from `.github/workflows/update-dist.yml` after
+            **${{ steps.ver.outputs.tag }}** was published.
+
+            **Diff summary**:
+            - `dist/scoop/ncm2mp3.json` — version + 2 Windows URLs + 2 hashes + bin path
+            - `dist/homebrew/ncm2mp3.rb` — version + 4 URLs + 4 sha256s
+
+            Hashes were fetched from:
+            - `ncm2mp3-${{ steps.ver.outputs.tag }}-<target>.(zip|tar.gz).sha256`
+
+            Merge this once you've eyeballed the diff. Scoop users will
+            get the new version on their next `scoop update`; Homebrew
+            users will get it on `brew upgrade` after the formula at
+            `raw.githubusercontent.com/.../main/dist/homebrew/ncm2mp3.rb`
+            is refreshed (i.e. immediately once this PR is merged).
+          branch: dist-sync/${{ steps.ver.outputs.tag }}
+          base: main
+          delete-branch: true
+          add-paths: |
+            dist/scoop/ncm2mp3.json
+            dist/homebrew/ncm2mp3.rb
+          labels: |
+            dist
+            automated
