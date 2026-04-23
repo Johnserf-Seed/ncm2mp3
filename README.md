@@ -2,6 +2,12 @@
 
 **[English](./README_en.md) | 简体中文**
 
+[![Crates.io](https://img.shields.io/crates/v/ncm2mp3.svg?logo=rust)](https://crates.io/crates/ncm2mp3)
+[![docs.rs](https://img.shields.io/docsrs/ncm2mp3-core?label=docs.rs%2Fncm2mp3-core&logo=docs.rs)](https://docs.rs/ncm2mp3-core)
+[![Downloads](https://img.shields.io/crates/d/ncm2mp3.svg)](https://crates.io/crates/ncm2mp3)
+[![License](https://img.shields.io/crates/l/ncm2mp3.svg)](./LICENSE)
+[![CI](https://github.com/Johnserf-Seed/ncm2mp3/actions/workflows/ci.yml/badge.svg)](https://github.com/Johnserf-Seed/ncm2mp3/actions/workflows/ci.yml)
+
 一个用 Rust 写的命令行工具，把网易云音乐的 `.ncm` 加密文件还原成原始音频格式（MP3 / FLAC / M4A …），带标签、带封面、并行批处理、中英文界面。
 
 ![演示](./docs/demo.gif)
@@ -64,6 +70,12 @@ $ tree ./out
 - **纯 Rust + 零外部依赖**：一个 1.4 MB 的静态可执行文件，无需 ffmpeg 或其他工具
 
 ## 安装
+
+### 通过 cargo 安装（跨平台，需要 Rust 工具链）
+
+```bash
+cargo install ncm2mp3
+```
 
 ### 通过包管理器一条命令安装
 

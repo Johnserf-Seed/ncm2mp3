@@ -2,6 +2,12 @@
 
 **English | [简体中文](./README.md)**
 
+[![Crates.io](https://img.shields.io/crates/v/ncm2mp3.svg?logo=rust)](https://crates.io/crates/ncm2mp3)
+[![docs.rs](https://img.shields.io/docsrs/ncm2mp3-core?label=docs.rs%2Fncm2mp3-core&logo=docs.rs)](https://docs.rs/ncm2mp3-core)
+[![Downloads](https://img.shields.io/crates/d/ncm2mp3.svg)](https://crates.io/crates/ncm2mp3)
+[![License](https://img.shields.io/crates/l/ncm2mp3.svg)](./LICENSE)
+[![CI](https://github.com/Johnserf-Seed/ncm2mp3/actions/workflows/ci.yml/badge.svg)](https://github.com/Johnserf-Seed/ncm2mp3/actions/workflows/ci.yml)
+
 A Rust CLI that decrypts Netease Cloud Music `.ncm` files back into their original audio (MP3 / FLAC / M4A …), with tags, cover art, parallel batching, and bilingual EN/ZH UI.
 
 ![Demo](./docs/demo.gif)
@@ -64,6 +70,12 @@ $ tree ./out
 - **Pure Rust, zero runtime deps**: single 1.4 MB static binary, no ffmpeg needed
 
 ## Install
+
+### Via cargo (cross-platform, requires the Rust toolchain)
+
+```bash
+cargo install ncm2mp3
+```
 
 ### Install via package manager (one-liner)
 
