@@ -16,6 +16,28 @@ pub enum CliCommand {
     Completion(Shell),
 }
 
+/// Whether to emit ANSI color codes in per-file status lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorChoice {
+    /// Emit color when stderr is a TTY; skip it when redirected (default).
+    Auto,
+    /// Always emit color, even if stderr is redirected.
+    Always,
+    /// Never emit color.
+    Never,
+}
+
+impl ColorChoice {
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.to_ascii_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "always" => Some(Self::Always),
+            "never" => Some(Self::Never),
+            _ => None,
+        }
+    }
+}
+
 /// What to do when the output file already exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictStrategy {
@@ -55,6 +77,12 @@ pub struct Cli {
     pub template: Option<String>,
     pub recursive: bool,
     pub format: Vec<String>,
+    /// Glob patterns for files to skip during directory collection
+    /// (matched against the absolute path as a string, using `globset`).
+    pub exclude: Vec<String>,
+    /// Optional cap on how many files actually get processed. Useful for
+    /// smoke-testing a large library with a handful of files first.
+    pub limit: Option<usize>,
     pub no_tag: bool,
     pub folder: bool,
     pub jobs: Option<usize>,
@@ -62,6 +90,7 @@ pub struct Cli {
     pub on_conflict: ConflictStrategy,
     pub dry_run: bool,
     pub verbose: u8,
+    pub color: ColorChoice,
     /// Explicit override of config file location; when `None`, the default
     /// platform path is consulted.
     pub config_path: Option<PathBuf>,
@@ -173,6 +202,20 @@ pub fn build_command(s: &'static Strings) -> Command {
                 .action(ArgAction::Append),
         )
         .arg(
+            Arg::new("exclude")
+                .long("exclude")
+                .value_name(s.val_pattern)
+                .help(s.arg_exclude)
+                .action(ArgAction::Append),
+        )
+        .arg(
+            Arg::new("limit")
+                .long("limit")
+                .value_name(s.val_n)
+                .help(s.arg_limit)
+                .value_parser(clap::value_parser!(usize)),
+        )
+        .arg(
             Arg::new("no-tag")
                 .long("no-tag")
                 .help(s.arg_no_tag)
@@ -233,6 +276,14 @@ pub fn build_command(s: &'static Strings) -> Command {
                 .long("verbose")
                 .help(s.arg_verbose)
                 .action(ArgAction::Count),
+        )
+        .arg(
+            Arg::new("color")
+                .long("color")
+                .value_name(s.val_color)
+                .help(s.arg_color)
+                .value_parser(["auto", "always", "never"])
+                .default_value("auto"),
         )
         .arg(
             Arg::new("lang")
@@ -432,6 +483,11 @@ fn cli_from_matches(matches: &ArgMatches, lang: Lang) -> Cli {
             }
         });
 
+    let exclude = matches
+        .get_many::<String>("exclude")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
+
     Cli {
         input: matches.get_one::<PathBuf>("input").cloned(),
         from_file: matches.get_one::<PathBuf>("from-file").cloned(),
@@ -439,12 +495,18 @@ fn cli_from_matches(matches: &ArgMatches, lang: Lang) -> Cli {
         template: matches.get_one::<String>("template").cloned(),
         recursive: matches.get_flag("recursive"),
         format,
+        exclude,
+        limit: matches.get_one::<usize>("limit").copied(),
         no_tag: matches.get_flag("no-tag"),
         folder: matches.get_flag("folder"),
         jobs: matches.get_one::<usize>("jobs").copied(),
         on_conflict,
         dry_run: matches.get_flag("dry-run"),
         verbose: matches.get_count("verbose"),
+        color: matches
+            .get_one::<String>("color")
+            .and_then(|s| ColorChoice::parse(s))
+            .unwrap_or(ColorChoice::Auto),
         config_path: matches.get_one::<PathBuf>("config").cloned(),
         no_config: matches.get_flag("no-config"),
         lang,

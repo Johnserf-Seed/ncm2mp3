@@ -26,11 +26,14 @@ pub struct Strings {
     pub arg_overwrite: &'static str,
     pub arg_on_conflict: &'static str,
     pub arg_from_file: &'static str,
+    pub arg_exclude: &'static str,
+    pub arg_limit: &'static str,
     pub arg_config: &'static str,
     pub arg_no_config: &'static str,
     pub arg_dry_run: &'static str,
     pub arg_verbose: &'static str,
     pub arg_lang: &'static str,
+    pub arg_color: &'static str,
 
     // --- Subcommand help ---
     pub cmd_info_about: &'static str,
@@ -46,6 +49,8 @@ pub struct Strings {
     pub val_shell: &'static str,
     pub val_path: &'static str,
     pub val_conflict: &'static str,
+    pub val_pattern: &'static str,
+    pub val_color: &'static str,
 
     // --- `info` mode labels ---
     pub info_file: &'static str,
@@ -114,11 +119,14 @@ pub const EN: Strings = Strings {
     arg_overwrite: "Overwrite existing output files instead of skipping them (alias for --on-conflict overwrite)",
     arg_on_conflict: "What to do when an output file already exists: skip (default) / overwrite / rename (append -1, -2, ... until free)",
     arg_from_file: "Read additional input paths from a text file (one path per line; # comments and blank lines ignored)",
+    arg_exclude: "Glob pattern(s) for files to skip during directory collection. Can be repeated. Matches against the full path (e.g. --exclude '**/tmp/**' --exclude '*.partial.ncm').",
+    arg_limit: "Stop after processing this many files (applied after --exclude and dedup; useful for smoke-testing a large library)",
     arg_config: "Load defaults from this TOML file instead of the platform default (~/.config/ncm2mp3/config.toml or %APPDATA%\\ncm2mp3\\config.toml)",
     arg_no_config: "Skip loading any config file; use only command-line arguments and built-in defaults",
     arg_dry_run: "Print what would be done without writing any output files",
     arg_verbose: "Increase log verbosity (-v for info, -vv for debug)",
     arg_lang: "UI language: en or zh (default: auto-detect from LANG/LC_ALL)",
+    arg_color: "When to emit ANSI color in per-file status lines: auto (default; color when stderr is a TTY) / always / never. The NO_COLOR env var, if set, forces never.",
 
     cmd_info_about: "Inspect NCM file metadata without decrypting the audio",
     arg_info_input: "Input .ncm file or a directory of .ncm files to inspect",
@@ -133,6 +141,8 @@ pub const EN: Strings = Strings {
     val_shell: "SHELL",
     val_path: "PATH",
     val_conflict: "STRATEGY",
+    val_pattern: "GLOB",
+    val_color: "WHEN",
 
     info_file: "File",
     info_size: "Size",
@@ -185,11 +195,14 @@ pub const ZH: Strings = Strings {
     arg_overwrite: "覆盖已存在的输出文件（等价于 --on-conflict overwrite）",
     arg_on_conflict: "输出文件已存在时的策略：skip（默认）/ overwrite / rename（自动追加 -1、-2 …）",
     arg_from_file: "从文本文件读取额外的输入路径（一行一个；以 # 开头的行和空行被忽略）",
+    arg_exclude: "目录扫描时要排除的 glob 模式（可重复）。匹配整条路径，例如 --exclude '**/tmp/**' --exclude '*.partial.ncm'",
+    arg_limit: "只处理前 N 个文件（在 --exclude 和去重之后应用；适合在大库上先小规模验证）",
     arg_config: "从指定 TOML 文件加载默认值，替代平台默认路径（~/.config/ncm2mp3/config.toml 或 %APPDATA%\\ncm2mp3\\config.toml）",
     arg_no_config: "跳过任何配置文件，仅使用命令行参数和内置默认值",
     arg_dry_run: "仅打印将要执行的操作，不写入任何文件",
     arg_verbose: "增加日志详细度（-v 显示 info，-vv 显示 debug）",
     arg_lang: "界面语言：en 或 zh（默认：从 LANG/LC_ALL 自动检测）",
+    arg_color: "每个文件状态行是否启用 ANSI 颜色：auto（默认；stderr 是 TTY 时启用）/ always / never。设置了 NO_COLOR 环境变量则强制 never。",
 
     cmd_info_about: "查看 NCM 文件的元数据信息，不解密音频",
     arg_info_input: "要检查的 .ncm 文件或包含 .ncm 文件的目录",
@@ -204,6 +217,8 @@ pub const ZH: Strings = Strings {
     val_shell: "SHELL",
     val_path: "路径",
     val_conflict: "策略",
+    val_pattern: "通配符",
+    val_color: "时机",
 
     info_file: "文件",
     info_size: "大小",

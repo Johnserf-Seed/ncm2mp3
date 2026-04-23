@@ -14,7 +14,7 @@ use console::style;
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 
-use crate::cli::{Cli, WatchArgs};
+use crate::cli::{Cli, ColorChoice, WatchArgs};
 use crate::i18n::t;
 use crate::pipeline::{has_ncm_extension, process_one, Outcome};
 
@@ -114,12 +114,15 @@ fn watch_args_to_cli(args: &WatchArgs) -> Cli {
         template: args.template.clone(),
         recursive: true,
         format: args.format.clone(),
+        exclude: Vec::new(),
+        limit: None,
         no_tag: args.no_tag,
         folder: args.folder,
         jobs: None,
         on_conflict: args.on_conflict,
         dry_run: false,
         verbose: 0,
+        color: ColorChoice::Auto,
         config_path: None,
         no_config: true,
         lang: Lang::En, // unused

@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use console::style;
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use ncm_core::{AudioFormat, Cover, CoverMime, NcmDecoder, NcmHeaders};
 use rayon::prelude::*;
 use walkdir::WalkDir;
@@ -125,7 +126,8 @@ fn thread_pool(jobs: Option<usize>) -> Result<rayon::ThreadPool> {
 }
 
 /// Merge files from the positional INPUT (single file or directory) with
-/// `--from-file <list>` entries, deduped.
+/// `--from-file <list>` entries, apply `--exclude` glob filters, dedupe,
+/// then cap at `--limit` if set.
 fn collect_inputs(args: &Cli) -> Result<Vec<PathBuf>> {
     let mut files: Vec<PathBuf> = Vec::new();
 
@@ -141,7 +143,29 @@ fn collect_inputs(args: &Cli) -> Result<Vec<PathBuf>> {
 
     files.sort();
     files.dedup();
+
+    // Apply exclude patterns (if any) against the full path string.
+    if !args.exclude.is_empty() {
+        let excluder = build_excluder(&args.exclude)?;
+        files.retain(|p| !excluder.is_match(p.to_string_lossy().as_ref()));
+    }
+
+    // Cap the list length per --limit after exclusion.
+    if let Some(n) = args.limit {
+        files.truncate(n);
+    }
+
     Ok(files)
+}
+
+/// Compile a list of glob patterns into a single `GlobSet` for fast match.
+fn build_excluder(patterns: &[String]) -> Result<GlobSet> {
+    let mut builder = GlobSetBuilder::new();
+    for pat in patterns {
+        let glob = Glob::new(pat).with_context(|| format!("invalid --exclude pattern: {pat}"))?;
+        builder.add(glob);
+    }
+    builder.build().context("failed to build exclude glob set")
 }
 
 /// Expand a single path into `.ncm` files it represents. A file path is

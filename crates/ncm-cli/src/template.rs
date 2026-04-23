@@ -47,19 +47,32 @@ pub fn render_stem(template: &str, metadata: &NcmMetadata, format: AudioFormat) 
     vars.insert("album".into(), sanitize(&metadata.album));
     vars.insert("title".into(), sanitize(metadata.fallback_title()));
     vars.insert("format".into(), format.extension().to_string());
-    vars.insert(
-        "bitrate".into(),
-        metadata
-            .bitrate
-            .map(|b| (b / 1000).to_string())
-            .unwrap_or_else(|| "0".into()),
-    );
+
+    // `{bitrate}` is the kbps integer (e.g. 320). `{bitrate_k}` is the same
+    // value with an explicit "k" suffix so templates can read more naturally
+    // (e.g. "{title} [{bitrate_k}]" -> "Song [320k]"). Both default to "0"
+    // when the metadata didn't carry a bitrate.
+    let bitrate_kbps = metadata.bitrate.map(|b| b / 1000).unwrap_or(0);
+    vars.insert("bitrate".into(), bitrate_kbps.to_string());
+    vars.insert("bitrate_k".into(), format!("{bitrate_kbps}k"));
+
+    // `{duration}` is total seconds (integer). `{duration_mmss}` renders as
+    // `mm:ss`. Both default to "0" / "00:00" when absent.
+    let duration_secs = metadata.duration.map(|ms| ms / 1000).unwrap_or(0);
+    vars.insert("duration".into(), duration_secs.to_string());
+    vars.insert("duration_mmss".into(), format_duration_mmss(duration_secs));
 
     let rendered = strfmt(template, &vars)
         .with_context(|| format!("invalid filename template: {template}"))?;
 
     // Strip any leading/trailing slashes to prevent accidental absolute paths.
     Ok(rendered.trim_matches(['/', '\\']).to_string())
+}
+
+fn format_duration_mmss(secs: u64) -> String {
+    let m = secs / 60;
+    let s = secs % 60;
+    format!("{m:02}:{s:02}")
 }
 
 #[cfg(test)]
@@ -111,6 +124,31 @@ mod tests {
         let m = meta("t", &["a"], "b");
         let out = render_stem("{title}-{bitrate}k", &m, AudioFormat::Mp3).unwrap();
         assert_eq!(out, "t-320k");
+    }
+
+    #[test]
+    fn bitrate_k_shortcut() {
+        let m = meta("t", &["a"], "b");
+        let out = render_stem("{title} [{bitrate_k}]", &m, AudioFormat::Mp3).unwrap();
+        assert_eq!(out, "t [320k]");
+    }
+
+    #[test]
+    fn duration_placeholders() {
+        let mut m = meta("t", &["a"], "b");
+        m.duration = Some(234_000); // 3:54
+        let secs = render_stem("{title}-{duration}", &m, AudioFormat::Mp3).unwrap();
+        assert_eq!(secs, "t-234");
+        let mmss = render_stem("{title} {duration_mmss}", &m, AudioFormat::Mp3).unwrap();
+        assert_eq!(mmss, "t 03:54");
+    }
+
+    #[test]
+    fn duration_defaults_to_zero_when_absent() {
+        let m = meta("t", &["a"], "b");
+        assert!(m.duration.is_none());
+        let out = render_stem("{title}-{duration_mmss}", &m, AudioFormat::Mp3).unwrap();
+        assert_eq!(out, "t-00:00");
     }
 
     #[test]

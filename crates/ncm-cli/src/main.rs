@@ -13,7 +13,7 @@ use std::time::Duration;
 use anyhow::Result;
 use ncm_core::AudioFormat;
 
-use crate::cli::CliCommand;
+use crate::cli::{CliCommand, ColorChoice};
 use crate::i18n::{t, Lang};
 use crate::pipeline::RunSummary;
 
@@ -52,6 +52,7 @@ fn main() -> Result<()> {
         CliCommand::Cover(args) => cover::run(&args)?,
         CliCommand::Watch(args) => watch::run(&args)?,
         CliCommand::Decrypt(mut args) => {
+            apply_color_choice(args.color);
             // Merge in config file settings. Command-line flags already in
             // `args` take priority; config fills in the gaps. `--no-config`
             // or `--config <path>` on the CLI decides which file to load.
@@ -73,6 +74,32 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Resolve the user's `--color` preference (plus the `NO_COLOR` env var
+/// convention) into a hard on/off call on the `console` crate's global
+/// state. Called once from `main` before any styled output is produced.
+fn apply_color_choice(choice: ColorChoice) {
+    // The well-known NO_COLOR env var (https://no-color.org) — when set to
+    // any non-empty value, user wants no color regardless of --color.
+    if std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty()) {
+        console::set_colors_enabled_stderr(false);
+        console::set_colors_enabled(false);
+        return;
+    }
+    match choice {
+        ColorChoice::Always => {
+            console::set_colors_enabled_stderr(true);
+            console::set_colors_enabled(true);
+        }
+        ColorChoice::Never => {
+            console::set_colors_enabled_stderr(false);
+            console::set_colors_enabled(false);
+        }
+        ColorChoice::Auto => {
+            // `console` defaults to TTY-based auto-detection; no override.
+        }
+    }
 }
 
 /// Render the final summary line using current translation strings, with

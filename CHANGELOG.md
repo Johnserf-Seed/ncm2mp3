@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-23
+
+### Added
+
+- `--exclude <GLOB>` — skip files matching one or more glob patterns (can
+  be repeated). Applied after directory collection and dedup. Backed by
+  the `globset` crate; patterns match against the full path string.
+- `--limit N` — cap the processed file count. Useful for smoke-testing a
+  large library ("try 5 files first, check the output path, then unleash").
+- Extended template placeholders:
+  - `{bitrate_k}` — kbps with explicit "k" suffix, e.g. `320k`.
+  - `{duration}` — total seconds (integer).
+  - `{duration_mmss}` — `mm:ss` rendering.
+- `--color=auto|always|never` to force-enable or disable ANSI color in
+  per-file status lines. Honors the `NO_COLOR` env var (forces never).
+
+### Distribution
+
+- Scoop manifest and Homebrew formula published under `dist/` for
+  single-command installs on Windows and macOS.
+
 ## [0.2.0] - 2026-04-23
 
 ### Added
@@ -83,6 +104,7 @@ Initial release.
 - **Documentation** — bilingual `README.md` (Chinese) + `README_en.md` (English)
 - **License** — Apache-2.0
 
-[Unreleased]: https://github.com/Johnserf-Seed/ncm2mp3/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Johnserf-Seed/ncm2mp3/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.1.0
