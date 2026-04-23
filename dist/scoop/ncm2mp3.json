@@ -1,0 +1,38 @@
+{
+    "$schema": "https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/schemas/scoop-manifest.schema.json",
+    "version": "0.3.0",
+    "description": "Decrypt Netease Cloud Music NCM files to their original audio format (MP3/FLAC/M4A), with tags, cover art, parallel batching, and bilingual EN/ZH UI.",
+    "homepage": "https://github.com/Johnserf-Seed/ncm2mp3",
+    "license": "Apache-2.0",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v0.3.0/ncm2mp3-v0.3.0-x86_64-pc-windows-msvc.zip",
+            "hash": "sha256:TO_BE_FILLED_IN_AFTER_RELEASE_UPLOAD"
+        },
+        "arm64": {
+            "url": "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v0.3.0/ncm2mp3-v0.3.0-aarch64-pc-windows-msvc.zip",
+            "hash": "sha256:TO_BE_FILLED_IN_AFTER_RELEASE_UPLOAD"
+        }
+    },
+    "bin": "ncm2mp3-v0.3.0-x86_64-pc-windows-msvc\\ncm2mp3.exe",
+    "checkver": {
+        "github": "https://github.com/Johnserf-Seed/ncm2mp3"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v$version/ncm2mp3-v$version-x86_64-pc-windows-msvc.zip",
+                "hash": {
+                    "url": "$url.sha256"
+                }
+            },
+            "arm64": {
+                "url": "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v$version/ncm2mp3-v$version-aarch64-pc-windows-msvc.zip",
+                "hash": {
+                    "url": "$url.sha256"
+                }
+            }
+        },
+        "bin": "ncm2mp3-v$version-x86_64-pc-windows-msvc\\ncm2mp3.exe"
+    }
+}

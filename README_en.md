@@ -65,7 +65,19 @@ $ tree ./out
 
 ## Install
 
-### Download a prebuilt binary (easiest)
+### Install via package manager (one-liner)
+
+**macOS / Linux** (Homebrew):
+```bash
+brew install --formula https://raw.githubusercontent.com/Johnserf-Seed/ncm2mp3/main/dist/homebrew/ncm2mp3.rb
+```
+
+**Windows** (Scoop):
+```powershell
+scoop install https://raw.githubusercontent.com/Johnserf-Seed/ncm2mp3/main/dist/scoop/ncm2mp3.json
+```
+
+### Download a prebuilt binary
 
 Grab the archive for your platform from the [Releases page](https://github.com/Johnserf-Seed/ncm2mp3/releases):
 

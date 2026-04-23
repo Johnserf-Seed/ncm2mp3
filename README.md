@@ -65,7 +65,19 @@ $ tree ./out
 
 ## 安装
 
-### 下载预编译二进制（最简单）
+### 通过包管理器一条命令安装
+
+**macOS / Linux**（Homebrew）：
+```bash
+brew install --formula https://raw.githubusercontent.com/Johnserf-Seed/ncm2mp3/main/dist/homebrew/ncm2mp3.rb
+```
+
+**Windows**（Scoop）：
+```powershell
+scoop install https://raw.githubusercontent.com/Johnserf-Seed/ncm2mp3/main/dist/scoop/ncm2mp3.json
+```
+
+### 下载预编译二进制
 
 到 [Releases 页面](https://github.com/Johnserf-Seed/ncm2mp3/releases) 下载对应你平台的压缩包：
 

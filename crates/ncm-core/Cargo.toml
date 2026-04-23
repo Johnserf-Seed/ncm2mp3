@@ -5,7 +5,13 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Core library for decrypting Netease Cloud Music NCM files"
+description = "Decrypt Netease Cloud Music NCM files. Parses the container format, applies the AES-128-ECB metadata/key decryption and the NCM-specific RC4-variant stream cipher, and streams the original audio (MP3/FLAC/M4A/...) to any Write. No network, no transcoding."
+readme = "README.md"
+documentation = "https://docs.rs/ncm-core"
+homepage = "https://github.com/Johnserf-Seed/ncm2mp3"
+keywords = ["ncm", "netease", "cloudmusic", "decrypt", "audio"]
+categories = ["multimedia::audio", "parser-implementations", "command-line-utilities", "encoding"]
+rust-version = "1.75"
 
 [dependencies]
 aes = { workspace = true }
