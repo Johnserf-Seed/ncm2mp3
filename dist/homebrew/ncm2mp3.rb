@@ -20,27 +20,27 @@ class Ncm2mp3 < Formula
   desc "Decrypt Netease Cloud Music NCM files to MP3 / FLAC / M4A (Rust CLI)"
   homepage "https://github.com/Johnserf-Seed/ncm2mp3"
   license "Apache-2.0"
-  version "0.3.0"
+  version "0.3.1"
 
   on_macos do
     on_arm do
       url "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v#{version}/ncm2mp3-v#{version}-aarch64-apple-darwin.tar.gz"
-      sha256 "TO_BE_FILLED_IN_AFTER_RELEASE_UPLOAD"
+      sha256 "cefdefb77dc6c1ad112ff032413efff5fef734c85799515615ae7ae647ce942e"
     end
     on_intel do
       url "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v#{version}/ncm2mp3-v#{version}-x86_64-apple-darwin.tar.gz"
-      sha256 "TO_BE_FILLED_IN_AFTER_RELEASE_UPLOAD"
+      sha256 "e03e0df318bb4f1756f5b95a10025a58b332f4a2c281712cfbd752e4aca3ce79"
     end
   end
 
   on_linux do
     on_arm do
       url "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v#{version}/ncm2mp3-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "TO_BE_FILLED_IN_AFTER_RELEASE_UPLOAD"
+      sha256 "a6a9a5a47c0c03741ea94ce7efe39a4ae4b42d255fa4b6b9d16116b28101f3da"
     end
     on_intel do
       url "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v#{version}/ncm2mp3-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "TO_BE_FILLED_IN_AFTER_RELEASE_UPLOAD"
+      sha256 "f1ef2d425a684a500e69d488109818dd0caccdd634342e155714c30c97173020"
     end
   end
 
