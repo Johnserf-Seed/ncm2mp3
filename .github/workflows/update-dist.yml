@@ -34,7 +34,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.release.draft == false && github.event.release.prerelease == false)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
           # Need enough history so the PR branch can fork cleanly off main.
