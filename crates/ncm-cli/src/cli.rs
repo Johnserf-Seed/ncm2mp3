@@ -155,6 +155,14 @@ pub fn build_command(s: &'static Strings) -> Command {
         // Allow top-level positional INPUT to be skipped when a subcommand is
         // invoked (e.g. `ncm2mp3 info song.ncm` doesn't need top-level INPUT).
         .subcommand_negates_reqs(true)
+        // Subcommand prefix matching — `inf` matches `info`, `comp` matches
+        // `completion`, etc. Without this, since INPUT is also a positional
+        // arg at the top level, clap would silently consume `inf` as INPUT
+        // and the user would only see "unexpected argument" or a confusing
+        // path-not-found error. With it, prefix typos route to the right
+        // subcommand automatically. Substitution typos like `wath` (vs
+        // `watch`) still fall through to the explicit suggester in main.rs.
+        .infer_subcommands(true)
         .arg(
             Arg::new("input")
                 .value_name(s.val_input)

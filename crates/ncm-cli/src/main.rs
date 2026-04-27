@@ -29,6 +29,13 @@ fn main() -> Result<()> {
     let matches = cmd.clone().get_matches();
     let command = cli::parse(&matches, lang)?;
 
+    // Subcommand-typo correction. clap's built-in `suggestions` feature
+    // catches typo'd flags (e.g. `--formatt` -> `--format`) and invalid
+    // enum values, but a typo'd subcommand like `ncm2mp3 inf song.ncm`
+    // gets silently consumed into the optional positional INPUT slot,
+    // so clap never gets a chance to suggest. We catch that case here.
+    suggest_subcommand_on_typo(&command, &cmd);
+
     // Verbose level only affects the decrypt pipeline for now; info / cover
     // / completion modes print their own structured output.
     let verbose = match &command {
@@ -176,6 +183,68 @@ fn format_display(f: AudioFormat) -> &'static str {
     }
 }
 
+/// Catch the case where the user mistyped a subcommand name. clap's
+/// `suggestions` feature handles flags and enum values automatically,
+/// but a typo'd subcommand (e.g. `ncm2mp3 inf song.ncm`) gets silently
+/// consumed by the optional positional INPUT slot. We detect that here:
+/// if INPUT was set, it doesn't exist on disk, looks like a bare word
+/// (no extension, no path separator), AND is close enough to a known
+/// subcommand name, print a friendly suggestion and exit non-zero.
+fn suggest_subcommand_on_typo(command: &CliCommand, cmd: &clap::Command) {
+    let CliCommand::Decrypt(args) = command else {
+        return; // a real subcommand was matched; nothing to second-guess
+    };
+    let Some(input) = args.input.as_deref() else {
+        return; // no input provided; --help / --version etc.
+    };
+    if input.exists() {
+        return; // user gave a real path
+    }
+    let raw = input.to_string_lossy();
+    // Heuristic: "looks like a bare word, not a path"
+    if raw.contains('/')
+        || raw.contains('\\')
+        || raw.contains('.')
+        || raw.is_empty()
+        || raw.len() > 32
+    {
+        return;
+    }
+
+    let names: Vec<&str> = cmd.get_subcommands().map(|s| s.get_name()).collect();
+    let Some(suggestion) = closest_name(&raw, &names) else {
+        return;
+    };
+
+    let s = t();
+    eprintln!(
+        "{}",
+        s.err_unknown_subcommand
+            .replace("{value}", &raw)
+            .replace("{suggestion}", suggestion)
+    );
+    eprintln!("  {}", s.tip_subcommands);
+    std::process::exit(2);
+}
+
+/// Pick the subcommand name closest to `typed`, but only if "close
+/// enough" — Levenshtein distance ≤ 2 OR `typed` is a prefix of a
+/// candidate. Returns None when nothing's close.
+fn closest_name<'a>(typed: &str, candidates: &[&'a str]) -> Option<&'a str> {
+    let typed_lc = typed.to_ascii_lowercase();
+    let mut best: Option<(&'a str, usize)> = None;
+    for &cand in candidates {
+        if cand.to_ascii_lowercase().starts_with(&typed_lc) && typed.len() >= 2 {
+            return Some(cand); // prefix match wins outright
+        }
+        let dist = strsim::levenshtein(&typed_lc, &cand.to_ascii_lowercase());
+        if dist <= 2 && best.map_or(true, |(_, d)| dist < d) {
+            best = Some((cand, dist));
+        }
+    }
+    best.map(|(name, _)| name)
+}
+
 /// Minimal pre-clap scan of argv to pick up `--lang`/`-L`/`--lang=…` before
 /// building the clap command. This lets us localize `--help` itself, which
 /// clap otherwise freezes at the moment the command is constructed.
@@ -190,4 +259,49 @@ fn prescan_lang() -> Option<Lang> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::closest_name;
+
+    const SUBCMDS: &[&str] = &["info", "cover", "watch", "completion"];
+
+    #[test]
+    fn one_letter_swap() {
+        // "inf" is one substitution away from "info" — within distance 2.
+        assert_eq!(closest_name("inf", SUBCMDS), Some("info"));
+        // "covar" -> "cover" is one substitution.
+        assert_eq!(closest_name("covar", SUBCMDS), Some("cover"));
+        // "wath" -> "watch" is one substitution.
+        assert_eq!(closest_name("wath", SUBCMDS), Some("watch"));
+    }
+
+    #[test]
+    fn prefix_wins_outright() {
+        // "comp" is a prefix of "completion" — direct match before
+        // distance scoring kicks in.
+        assert_eq!(closest_name("comp", SUBCMDS), Some("completion"));
+    }
+
+    #[test]
+    fn case_insensitive() {
+        assert_eq!(closest_name("INFO", SUBCMDS), Some("info"));
+        assert_eq!(closest_name("Inf", SUBCMDS), Some("info"));
+    }
+
+    #[test]
+    fn nothing_close_returns_none() {
+        // "xyzzy" vs any subcommand has Levenshtein > 2.
+        assert_eq!(closest_name("xyzzy", SUBCMDS), None);
+        // Single letter — too ambiguous, no prefix kicks in.
+        assert_eq!(closest_name("z", SUBCMDS), None);
+    }
+
+    #[test]
+    fn picks_closest_when_multiple_within_threshold() {
+        // "covor" is distance 2 from "cover" (1 sub) — wins.
+        // "covor" is distance 4 from "completion" — way over.
+        assert_eq!(closest_name("covor", SUBCMDS), Some("cover"));
+    }
 }

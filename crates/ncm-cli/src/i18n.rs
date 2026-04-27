@@ -102,6 +102,10 @@ pub struct Strings {
     // --- Errors ---
     pub err_jobs_zero: &'static str,
     pub err_no_parent: &'static str,
+    /// `{value}` = the typo'd token; `{suggestion}` = the closest subcommand.
+    pub err_unknown_subcommand: &'static str,
+    /// Generic hint used after the error: lists known subcommands.
+    pub tip_subcommands: &'static str,
     pub err_rename_exhausted: &'static str,
 }
 
@@ -178,6 +182,8 @@ pub const EN: Strings = Strings {
 
     err_jobs_zero: "--jobs must be >= 1",
     err_no_parent: "input has no parent directory",
+    err_unknown_subcommand: "'{value}' is not a recognized subcommand or an existing input path. Did you mean `{suggestion}`?",
+    tip_subcommands: "available subcommands: info, cover, watch, completion. Run `ncm2mp3 --help` for the full reference.",
     err_rename_exhausted: "rename strategy ran out of suffixes (1..9999) for {path}",
 };
 
@@ -254,6 +260,8 @@ pub const ZH: Strings = Strings {
 
     err_jobs_zero: "--jobs 必须 >= 1",
     err_no_parent: "输入路径没有父目录",
+    err_unknown_subcommand: "'{value}' 不是已知的子命令，也不是已存在的输入路径。你是不是想输入 `{suggestion}`？",
+    tip_subcommands: "可用的子命令：info、cover、watch、completion。运行 `ncm2mp3 --help` 查看完整参数。",
     err_rename_exhausted: "rename 策略的后缀已用尽（1..9999）：{path}",
 };
 

@@ -34,6 +34,7 @@ rayon = { workspace = true }
 console = { workspace = true }
 walkdir = { workspace = true }
 globset = { workspace = true }
+strsim = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }

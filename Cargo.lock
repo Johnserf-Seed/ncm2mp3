@@ -632,7 +632,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ncm-cli"
+name = "ncm2mp3"
 version = "0.3.0"
 dependencies = [
  "anyhow",
@@ -644,18 +644,19 @@ dependencies = [
  "globset",
  "lofty",
  "log",
- "ncm-core",
+ "ncm2mp3-core",
  "notify",
  "notify-debouncer-mini",
  "rayon",
  "serde",
  "strfmt",
+ "strsim",
  "toml",
  "walkdir",
 ]
 
 [[package]]
-name = "ncm-core"
+name = "ncm2mp3-core"
 version = "0.3.0"
 dependencies = [
  "aes",
