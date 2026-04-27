@@ -59,12 +59,12 @@ jobs:
 
       - name: Build (cross)
         if: matrix.cross
-        run: cross build --release --target ${{ matrix.target }} -p ncm-cli
+        run: cross build --release --target ${{ matrix.target }} -p ncm2mp3
         shell: bash
 
       - name: Build (cargo)
         if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }} -p ncm-cli
+        run: cargo build --release --target ${{ matrix.target }} -p ncm2mp3
         shell: bash
 
       - name: Stage artifact (Unix)
