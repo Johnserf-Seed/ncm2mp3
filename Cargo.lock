@@ -633,7 +633,7 @@ dependencies = [
 
 [[package]]
 name = "ncm2mp3"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -651,13 +651,14 @@ dependencies = [
  "serde",
  "strfmt",
  "strsim",
+ "tempfile",
  "toml",
  "walkdir",
 ]
 
 [[package]]
 name = "ncm2mp3-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "aes",
  "base64",

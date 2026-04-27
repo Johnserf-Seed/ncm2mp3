@@ -429,3 +429,381 @@ fn build_output_path(
     out.set_extension(ext);
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::{ColorChoice, ConflictStrategy};
+    use crate::i18n::Lang;
+    use ncm_core::{NcmHeaders, NcmMetadata};
+    use std::io::Write;
+
+    // ---- Test fixtures ---------------------------------------------------
+
+    /// Build a minimal `Cli` for tests; callers tweak only the fields they
+    /// care about, defaults match the CLI's "no flags passed" behavior.
+    fn cli_default() -> Cli {
+        Cli {
+            input: None,
+            from_file: None,
+            output: None,
+            template: None,
+            recursive: false,
+            format: Vec::new(),
+            exclude: Vec::new(),
+            limit: None,
+            no_tag: false,
+            folder: false,
+            jobs: None,
+            on_conflict: ConflictStrategy::Skip,
+            dry_run: false,
+            verbose: 0,
+            color: ColorChoice::Auto,
+            config_path: None,
+            no_config: true,
+            lang: Lang::En,
+        }
+    }
+
+    fn fake_headers(format_hint: &str) -> NcmHeaders {
+        // The decoder/parser code paths aren't exercised here; we just need
+        // a populated `NcmHeaders` so `build_output_path` can rely on
+        // `metadata.title` / `bitrate` / `duration` for template rendering.
+        NcmHeaders {
+            metadata: NcmMetadata {
+                title: "song".into(),
+                artists: vec!["Artist".into()],
+                album: "Album".into(),
+                declared_format: ncm_core::AudioFormat::from_hint(format_hint),
+                bitrate: Some(320_000),
+                duration: Some(234_000),
+                album_pic_url: None,
+            },
+            cover: None,
+            detected_format: ncm_core::AudioFormat::Unknown,
+        }
+    }
+
+    // ---- has_ncm_extension -----------------------------------------------
+
+    #[test]
+    fn ncm_ext_lowercase() {
+        assert!(has_ncm_extension(Path::new("song.ncm")));
+    }
+
+    #[test]
+    fn ncm_ext_uppercase_and_mixed_case() {
+        assert!(has_ncm_extension(Path::new("song.NCM")));
+        assert!(has_ncm_extension(Path::new("song.NcM")));
+    }
+
+    #[test]
+    fn ncm_ext_rejects_non_matching() {
+        assert!(!has_ncm_extension(Path::new("song.mp3")));
+        assert!(!has_ncm_extension(Path::new("song")));
+        assert!(!has_ncm_extension(Path::new("song.ncm.bak")));
+        assert!(!has_ncm_extension(Path::new(".ncm"))); // hidden file with no stem
+    }
+
+    // ---- format_matches --------------------------------------------------
+
+    #[test]
+    fn format_filter_basic_match() {
+        assert!(format_matches(&["mp3".into()], AudioFormat::Mp3));
+        assert!(!format_matches(&["mp3".into()], AudioFormat::Flac));
+    }
+
+    #[test]
+    fn format_filter_case_insensitive() {
+        assert!(format_matches(&["MP3".into()], AudioFormat::Mp3));
+        assert!(format_matches(&["FlAc".into()], AudioFormat::Flac));
+    }
+
+    #[test]
+    fn format_filter_aliases() {
+        // Hint -> real format mapping is owned by AudioFormat::from_hint;
+        // we check the user-facing aliases the CLI advertises.
+        assert!(format_matches(&["aac".into()], AudioFormat::M4a));
+        assert!(format_matches(&["mp4".into()], AudioFormat::M4a));
+        assert!(format_matches(&["vorbis".into()], AudioFormat::Ogg));
+    }
+
+    #[test]
+    fn format_filter_multiple() {
+        let f: Vec<String> = vec!["mp3".into(), "flac".into()];
+        assert!(format_matches(&f, AudioFormat::Mp3));
+        assert!(format_matches(&f, AudioFormat::Flac));
+        assert!(!format_matches(&f, AudioFormat::M4a));
+    }
+
+    // ---- build_excluder --------------------------------------------------
+
+    #[test]
+    fn excluder_single_pattern_matches_path() {
+        let g = build_excluder(&["**/tmp/**".into()]).unwrap();
+        assert!(g.is_match("/foo/tmp/file.ncm"));
+        assert!(g.is_match("a/b/tmp/c.ncm"));
+        assert!(!g.is_match("/foo/bar/file.ncm"));
+    }
+
+    #[test]
+    fn excluder_multiple_patterns_combine_or() {
+        let g = build_excluder(&["**/tmp/**".into(), "*.partial.ncm".into()]).unwrap();
+        assert!(g.is_match("/x/tmp/y.ncm"));
+        assert!(g.is_match("foo.partial.ncm"));
+        assert!(!g.is_match("/x/normal.ncm"));
+    }
+
+    #[test]
+    fn excluder_invalid_pattern_errors() {
+        // Unmatched `[` is invalid glob syntax. Surface as Err with context.
+        let r = build_excluder(&["[unclosed".into()]);
+        assert!(r.is_err());
+        assert!(r.unwrap_err().to_string().contains("invalid --exclude"));
+    }
+
+    // ---- read_file_list --------------------------------------------------
+
+    #[test]
+    fn read_file_list_basic() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("list.txt");
+        std::fs::write(&p, "song1.ncm\nsong2.ncm\n").unwrap();
+        let v = read_file_list(&p).unwrap();
+        assert_eq!(
+            v,
+            vec![PathBuf::from("song1.ncm"), PathBuf::from("song2.ncm")]
+        );
+    }
+
+    #[test]
+    fn read_file_list_skips_comments_and_blank_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("list.txt");
+        let body = "\
+# this is a comment
+song1.ncm
+
+   # indented comment
+song2.ncm
+";
+        std::fs::write(&p, body).unwrap();
+        let v = read_file_list(&p).unwrap();
+        assert_eq!(
+            v,
+            vec![PathBuf::from("song1.ncm"), PathBuf::from("song2.ncm")]
+        );
+    }
+
+    #[test]
+    fn read_file_list_trims_whitespace() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("list.txt");
+        std::fs::write(&p, "  song1.ncm  \n\tsong2.ncm\t\n").unwrap();
+        let v = read_file_list(&p).unwrap();
+        assert_eq!(
+            v,
+            vec![PathBuf::from("song1.ncm"), PathBuf::from("song2.ncm")]
+        );
+    }
+
+    #[test]
+    fn read_file_list_missing_file_errors() {
+        let r = read_file_list(Path::new("/nonexistent/list.txt"));
+        assert!(r.is_err());
+    }
+
+    // ---- resolve_conflict / find_free_rename ------------------------------
+
+    #[test]
+    fn resolve_conflict_writes_when_path_doesnt_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("song.mp3");
+        for strat in [
+            ConflictStrategy::Skip,
+            ConflictStrategy::Overwrite,
+            ConflictStrategy::Rename,
+        ] {
+            let r = resolve_conflict(&p, strat).unwrap();
+            assert!(matches!(r, ConflictOutcome::Write(ref w) if w == &p));
+        }
+    }
+
+    #[test]
+    fn resolve_conflict_skip_existing() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("song.mp3");
+        std::fs::write(&p, b"existing").unwrap();
+        let r = resolve_conflict(&p, ConflictStrategy::Skip).unwrap();
+        assert!(matches!(r, ConflictOutcome::Skip));
+    }
+
+    #[test]
+    fn resolve_conflict_overwrite_returns_same_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("song.mp3");
+        std::fs::write(&p, b"existing").unwrap();
+        let r = resolve_conflict(&p, ConflictStrategy::Overwrite).unwrap();
+        assert!(matches!(r, ConflictOutcome::Write(ref w) if w == &p));
+    }
+
+    #[test]
+    fn resolve_conflict_rename_picks_first_free_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("song.mp3");
+        std::fs::write(&p, b"existing").unwrap();
+        let r = resolve_conflict(&p, ConflictStrategy::Rename).unwrap();
+        match r {
+            ConflictOutcome::Write(w) => {
+                assert_eq!(w.file_name().unwrap().to_str().unwrap(), "song-1.mp3");
+                assert_eq!(w.parent().unwrap(), dir.path());
+            }
+            ConflictOutcome::Skip => panic!("should have renamed, not skipped"),
+        }
+    }
+
+    #[test]
+    fn resolve_conflict_rename_skips_taken_indices() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("song.mp3");
+        // Pre-occupy song.mp3, song-1.mp3, song-2.mp3. Expect song-3.mp3.
+        for name in ["song.mp3", "song-1.mp3", "song-2.mp3"] {
+            std::fs::write(dir.path().join(name), b"x").unwrap();
+        }
+        let r = resolve_conflict(&p, ConflictStrategy::Rename).unwrap();
+        match r {
+            ConflictOutcome::Write(w) => {
+                assert_eq!(w.file_name().unwrap().to_str().unwrap(), "song-3.mp3");
+            }
+            ConflictOutcome::Skip => panic!("should have renamed"),
+        }
+    }
+
+    // ---- build_output_path ----------------------------------------------
+    //
+    // The tricky function: template ON/OFF × folder mode ON/OFF, plus
+    // the extension swap. The key invariants we want to hold:
+    //   - default template = preserve input filename stem
+    //   - explicit template = render against metadata
+    //   - folder mode = wrap output in a same-named directory
+    //   - the audio extension always matches the *passed-in* format,
+    //     not whatever the input filename had
+
+    #[test]
+    fn build_output_default_keeps_input_stem_swaps_ext() {
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        let h = fake_headers("mp3");
+        let p =
+            build_output_path(Path::new("/in/My Song.ncm"), &args, &h, AudioFormat::Mp3).unwrap();
+        assert_eq!(p, PathBuf::from("/out/My Song.mp3"));
+    }
+
+    #[test]
+    fn build_output_default_no_output_uses_input_parent() {
+        let args = cli_default();
+        let h = fake_headers("flac");
+        let p =
+            build_output_path(Path::new("/music/foo.ncm"), &args, &h, AudioFormat::Flac).unwrap();
+        assert_eq!(p, PathBuf::from("/music/foo.flac"));
+    }
+
+    #[test]
+    fn build_output_template_drives_naming() {
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        args.template = Some("{artist}/{album}/{title}".into());
+        let h = fake_headers("mp3");
+        let p =
+            build_output_path(Path::new("/in/whatever.ncm"), &args, &h, AudioFormat::Mp3).unwrap();
+        assert_eq!(p, PathBuf::from("/out/Artist/Album/song.mp3"));
+    }
+
+    #[test]
+    fn build_output_folder_mode_wraps_in_dir() {
+        // No template + folder: input "Foo.ncm" -> /out/Foo/Foo.mp3
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        args.folder = true;
+        let h = fake_headers("mp3");
+        let p = build_output_path(Path::new("/in/Foo.ncm"), &args, &h, AudioFormat::Mp3).unwrap();
+        assert_eq!(p, PathBuf::from("/out/Foo/Foo.mp3"));
+    }
+
+    #[test]
+    fn build_output_template_plus_folder_combines() {
+        // Template {artist}/{title} + folder:
+        //   /out/Artist/song -> /out/Artist/song/song.mp3
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        args.template = Some("{artist}/{title}".into());
+        args.folder = true;
+        let h = fake_headers("mp3");
+        let p =
+            build_output_path(Path::new("/in/whatever.ncm"), &args, &h, AudioFormat::Mp3).unwrap();
+        assert_eq!(p, PathBuf::from("/out/Artist/song/song.mp3"));
+    }
+
+    #[test]
+    fn build_output_extension_follows_format_not_input() {
+        // Even if the input is named .ncm, the output uses the audio format
+        // we detected, not the input extension.
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        let h = fake_headers("mp3");
+        let p = build_output_path(Path::new("/in/song.ncm"), &args, &h, AudioFormat::Flac).unwrap();
+        assert_eq!(p, PathBuf::from("/out/song.flac"));
+    }
+
+    #[test]
+    fn build_output_dot_ncm_pathological_input() {
+        // Documents the (mildly quirky but harmless) behavior for inputs
+        // named just `.ncm`: Rust's `Path::file_stem` returns the whole
+        // string `.ncm` for hidden-file-style names, so the stem keeps
+        // the leading dot and the extension swap appends rather than
+        // replaces. Result is `.ncm.mp3` — weird but a valid file path.
+        // The "unknown" fallback only triggers on truly empty stems
+        // (rare in practice; mostly trailing-slash paths).
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        let h = fake_headers("mp3");
+        let p = build_output_path(Path::new("/in/.ncm"), &args, &h, AudioFormat::Mp3).unwrap();
+        assert_eq!(p.file_name().unwrap().to_str().unwrap(), ".ncm.mp3");
+    }
+
+    // ---- write_cover_next_to ---------------------------------------------
+
+    #[test]
+    fn write_cover_jpeg_lands_with_jpg_ext() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio = dir.path().join("song.mp3");
+        std::fs::File::create(&audio)
+            .unwrap()
+            .write_all(b"fake mp3")
+            .unwrap();
+        let cover = Cover {
+            mime: CoverMime::Jpeg,
+            data: b"jpeg-bytes".to_vec(),
+        };
+        write_cover_next_to(&audio, &cover).unwrap();
+        let cover_path = dir.path().join("cover.jpg");
+        assert!(cover_path.exists());
+        assert_eq!(std::fs::read(&cover_path).unwrap(), b"jpeg-bytes");
+    }
+
+    #[test]
+    fn write_cover_unknown_mime_is_silently_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio = dir.path().join("song.mp3");
+        std::fs::File::create(&audio).unwrap();
+        let cover = Cover {
+            mime: CoverMime::Unknown,
+            data: b"bytes".to_vec(),
+        };
+        // Should NOT error, but should also NOT create a file.
+        write_cover_next_to(&audio, &cover).unwrap();
+        assert!(!dir.path().join("cover.bin").exists());
+        assert!(!dir.path().join("cover.jpg").exists());
+        assert!(!dir.path().join("cover.png").exists());
+    }
+}

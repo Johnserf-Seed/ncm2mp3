@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-28
+
+### Added
+
+- **Subcommand typo correction**: `ncm2mp3 inf song.ncm` now infers
+  `info`, `comp bash` infers `completion`, etc. Standalone substitution
+  typos like `wath` / `covar` get an explicit "Did you mean `watch`?"
+  hint. Combines clap's `infer_subcommands(true)` (prefix matches) with
+  a Levenshtein-based suggester (substitution typos). Both English and
+  Chinese hints. Powered by the lightweight `strsim` crate.
+- **Distribution manifests** under `dist/`: a Scoop manifest
+  (`dist/scoop/ncm2mp3.json`) and Homebrew formula
+  (`dist/homebrew/ncm2mp3.rb`) for one-line installation on Windows /
+  macOS / Linux.
+- **Auto-sync workflow** (`.github/workflows/update-dist.yml`): fires
+  on each Release publish, fetches the 6 SHA256 hashes from the
+  release's `.sha256` siblings, splices them + the new version into
+  both manifests, and opens a PR for review. No more manual hash
+  copy-paste per release.
+- **Release archives now ship `.sha256` siblings** (`release.yml` was
+  updated to emit them). Useful both for the auto-sync workflow and
+  for users who want to verify a manual download with `sha256sum -c`.
+
+### Changed
+
+- **Crate names on crates.io**:
+  - `ncm-core` → `ncm2mp3-core` (the `ncm-core` slot was taken by an
+    unrelated project). Source code stays the same — `ncm-cli`
+    aliases the dep back to `ncm-core` via Cargo's `package = "..."`.
+  - `ncm-cli` → `ncm2mp3` (so that `cargo install ncm2mp3` Just Works
+    and matches the binary name users actually type).
+- **README badges**: crates.io version, docs.rs, downloads, license,
+  CI status — all five at the top of both READMEs.
+
+### Tests
+
+- **+28 unit tests in `pipeline.rs`** (was 0): glob exclusion, format
+  filter, `--from-file` parsing, conflict resolution (skip/overwrite/
+  rename + index probing), output path resolution across template ×
+  folder mode × extension swap combinations. Brings total test count
+  to 79.
+
 ## [0.3.0] - 2026-04-23
 
 ### Added
@@ -104,7 +146,8 @@ Initial release.
 - **Documentation** — bilingual `README.md` (Chinese) + `README_en.md` (English)
 - **License** — Apache-2.0
 
-[Unreleased]: https://github.com/Johnserf-Seed/ncm2mp3/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Johnserf-Seed/ncm2mp3/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.1.0

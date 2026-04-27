@@ -3,7 +3,7 @@ members = ["crates/ncm-core", "crates/ncm-cli"]
 resolver = "2"
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Johnserf-Seed"]
@@ -27,6 +27,7 @@ console = "0.16"
 walkdir = "2.5"
 globset = "0.4"
 strsim = "0.11"
+tempfile = "3"
 env_logger = "0.11"
 log = "0.4"
 toml = "1"
