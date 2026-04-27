@@ -166,7 +166,7 @@ jobs:
           ruby -c dist/homebrew/ncm2mp3.rb
 
       - name: Open PR
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: |
