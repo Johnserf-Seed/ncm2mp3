@@ -9,8 +9,14 @@ name: Update dist manifests
 # is handled automatically every tag.
 
 on:
-  release:
-    types: [published]
+  # `release: published` would seem the obvious trigger, but releases
+  # created by `softprops/action-gh-release` using the default GITHUB_TOKEN
+  # don't fire downstream `release` events (GitHub's anti-loop guard).
+  # `workflow_run` listens on Release.yml's completion event directly,
+  # which is not subject to the same suppression.
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
     # Manual trigger for backfilling older tags or re-running after a fix.
     inputs:
@@ -23,16 +29,20 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: update-dist-${{ github.event.release.tag_name || inputs.tag }}
+  # `head_branch` is the tag name when Release.yml was triggered by a tag
+  # push; for workflow_dispatch we use the explicit tag input instead.
+  group: update-dist-${{ github.event.workflow_run.head_branch || inputs.tag }}
   cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    # Skip for pre-releases (draft / prerelease tags) unless manually dispatched.
+    # Skip when the upstream Release run failed (no archives to hash anyway)
+    # and when it wasn't triggered by a tag push (head_branch starts with `v`).
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event.release.draft == false && github.event.release.prerelease == false)
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
     steps:
       - uses: actions/checkout@v5
         with:
@@ -43,7 +53,7 @@ jobs:
       - name: Resolve tag + version
         id: ver
         run: |
-          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          TAG="${{ github.event.workflow_run.head_branch || inputs.tag }}"
           if [[ -z "$TAG" ]]; then
             echo "no tag provided"; exit 1
           fi
