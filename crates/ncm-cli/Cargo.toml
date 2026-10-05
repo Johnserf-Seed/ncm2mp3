@@ -24,7 +24,7 @@ path = "src/main.rs"
 # `version = "..."` is required here so the package can be published —
 # cargo uses it when resolving the dep from crates.io, and falls back
 # to `path` during local dev.
-ncm-core = { path = "../ncm-core", package = "ncm2mp3-core", version = "0.3.0" }
+ncm-core = { path = "../ncm-core", package = "ncm2mp3-core", version = "0.3.2" }
 clap = { workspace = true }
 clap_complete = { workspace = true }
 anyhow = { workspace = true }

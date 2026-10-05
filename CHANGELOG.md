@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-04
+
 ### 修复
 
 - **网易云音乐 3.x 客户端下载的 NCM 解密后是噪音**
@@ -183,7 +185,8 @@
 - **文档** —— 双语 `README.md`（中文）+ `README_en.md`（英文）
 - **许可证** —— Apache-2.0
 
-[Unreleased]: https://github.com/Johnserf-Seed/ncm2mp3/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Johnserf-Seed/ncm2mp3/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.3.2
 [0.3.1]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Johnserf-Seed/ncm2mp3/releases/tag/v0.2.0
