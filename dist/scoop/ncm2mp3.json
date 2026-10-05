@@ -1,5 +1,5 @@
 {
-    "$schema": "https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/schemas/scoop-manifest.schema.json",
+    "$schema": "https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/schema.json",
     "version": "0.3.2",
     "description": "Decrypt Netease Cloud Music NCM files to their original audio format (MP3/FLAC/M4A), with tags, cover art, parallel batching, and bilingual EN/ZH UI.",
     "homepage": "https://github.com/Johnserf-Seed/ncm2mp3",
