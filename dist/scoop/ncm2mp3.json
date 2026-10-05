@@ -7,14 +7,16 @@
     "architecture": {
         "64bit": {
             "url": "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v0.3.2/ncm2mp3-v0.3.2-x86_64-pc-windows-msvc.zip",
-            "hash": "sha256:96635ea632539c8d2cb4e00c8b9bb4f6e64704bbbfb6e416fe5c49f3627d32a3"
+            "hash": "sha256:96635ea632539c8d2cb4e00c8b9bb4f6e64704bbbfb6e416fe5c49f3627d32a3",
+            "extract_dir": "ncm2mp3-v0.3.2-x86_64-pc-windows-msvc"
         },
         "arm64": {
             "url": "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v0.3.2/ncm2mp3-v0.3.2-aarch64-pc-windows-msvc.zip",
-            "hash": "sha256:d6f9641d8281d963c212b72361cfa8ad652bdfd5997bff36be615335a8e6ac43"
+            "hash": "sha256:d6f9641d8281d963c212b72361cfa8ad652bdfd5997bff36be615335a8e6ac43",
+            "extract_dir": "ncm2mp3-v0.3.2-aarch64-pc-windows-msvc"
         }
     },
-    "bin": "ncm2mp3-v0.3.2-x86_64-pc-windows-msvc\\ncm2mp3.exe",
+    "bin": "ncm2mp3.exe",
     "checkver": {
         "github": "https://github.com/Johnserf-Seed/ncm2mp3"
     },
@@ -24,15 +26,17 @@
                 "url": "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v$version/ncm2mp3-v$version-x86_64-pc-windows-msvc.zip",
                 "hash": {
                     "url": "$url.sha256"
-                }
+                },
+                "extract_dir": "ncm2mp3-v$version-x86_64-pc-windows-msvc"
             },
             "arm64": {
                 "url": "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/v$version/ncm2mp3-v$version-aarch64-pc-windows-msvc.zip",
                 "hash": {
                     "url": "$url.sha256"
-                }
+                },
+                "extract_dir": "ncm2mp3-v$version-aarch64-pc-windows-msvc"
             }
         },
-        "bin": "ncm2mp3-v$version-x86_64-pc-windows-msvc\\ncm2mp3.exe"
+        "bin": "ncm2mp3.exe"
     }
 }

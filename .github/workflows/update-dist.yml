@@ -116,7 +116,11 @@ jobs:
           m["architecture"]["64bit"]["hash"] = f"sha256:{win_x64}"
           m["architecture"]["arm64"]["url"]  = f"{base}/ncm2mp3-{tag}-aarch64-pc-windows-msvc.zip"
           m["architecture"]["arm64"]["hash"] = f"sha256:{win_a64}"
-          m["bin"] = f"ncm2mp3-{tag}-x86_64-pc-windows-msvc\\ncm2mp3.exe"
+          # Each zip holds a single `ncm2mp3-<tag>-<target>/` folder (release.yml,
+          # "Stage artifact (Windows)"); extract_dir unwraps it per arch so the
+          # shared top-level `"bin": "ncm2mp3.exe"` resolves on x64 and arm64.
+          m["architecture"]["64bit"]["extract_dir"] = f"ncm2mp3-{tag}-x86_64-pc-windows-msvc"
+          m["architecture"]["arm64"]["extract_dir"] = f"ncm2mp3-{tag}-aarch64-pc-windows-msvc"
 
           with open(path, "w", encoding="utf-8", newline="\n") as f:
               json.dump(m, f, indent=4, ensure_ascii=False)
@@ -192,7 +196,7 @@ jobs:
             **${{ steps.ver.outputs.tag }}** was published.
 
             **Diff summary**:
-            - `dist/scoop/ncm2mp3.json` — version + 2 Windows URLs + 2 hashes + bin path
+            - `dist/scoop/ncm2mp3.json` — version + 2 Windows URLs + 2 hashes + 2 extract_dirs
             - `dist/homebrew/ncm2mp3.rb` — version + 4 URLs + 4 sha256s
 
             Hashes were fetched from:

@@ -39,7 +39,7 @@ gh workflow run update-dist.yml -f tag=vX.Y.Z
      curl -sL "https://github.com/Johnserf-Seed/ncm2mp3/releases/download/vX.Y.Z/ncm2mp3-vX.Y.Z-${t}.${ext}.sha256" | awk '{print $1}'
    done
    ```
-3. Paste: 2 hashes (Windows) into `scoop/ncm2mp3.json`, 4 hashes (macOS+Linux) into `homebrew/ncm2mp3.rb`; bump `version` in both. Commit + push.
+3. Paste: 2 hashes (Windows) into `scoop/ncm2mp3.json`, 4 hashes (macOS+Linux) into `homebrew/ncm2mp3.rb`; bump `version` in both. The Scoop manifest also spells the version out in each architecture's `url` and `extract_dir`, so update those too (the Homebrew URLs use `#{version}`). Commit + push.
 
 ## Why not a dedicated tap / bucket repo?
 
