@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing is written; previously the noise was written under the
   metadata's declared format with a `✓`. `info` now shows the sniffed
   format too, e.g. `unknown (declared: MP3)`.
+- **A `.` in the file name truncated the output name**
+  ([#4](https://github.com/Johnserf-Seed/ncm2mp3/issues/4)).
+  `artist - song name . xxx.ncm` used to come out as
+  `artist - song name .flac`; now only the extension changes, giving
+  `artist - song name . xxx.flac`. Template-generated names (e.g. a
+  `Mr. Brightside` title) and `--folder` mode had the same bug and are
+  fixed too.
 
 ### Deprecated
 
@@ -38,9 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 
-- 11 new tests covering padded and image-less cover frames, the 3.x
-  client file layout (144-byte key segment), and no output on
-  unrecognized audio. Total test count goes from 79 to 90.
+- 15 new tests covering padded and image-less cover frames, the 3.x
+  client file layout (144-byte key segment), no output on unrecognized
+  audio, and dotted names across every output-path mode. Total test count
+  goes from 79 to 94.
 
 ## [0.3.1] - 2026-04-28
 

@@ -433,8 +433,20 @@ fn build_output_path(
         }
     }
 
-    out.set_extension(ext);
+    append_extension(&mut out, ext);
     Ok(out)
+}
+
+/// Append `.ext` to the last path component. `PathBuf::set_extension` would
+/// treat a dot inside the stem as an existing extension and replace it,
+/// turning `Mr. Brightside` into `Mr.mp3`.
+fn append_extension(path: &mut PathBuf, ext: &str) {
+    if let Some(name) = path.file_name() {
+        let mut name = name.to_os_string();
+        name.push(".");
+        name.push(ext);
+        path.set_file_name(name);
+    }
 }
 
 #[cfg(test)]
@@ -778,6 +790,46 @@ song2.ncm
         assert_eq!(p.file_name().unwrap().to_str().unwrap(), ".ncm.mp3");
     }
 
+    #[test]
+    fn build_output_default_keeps_dots_in_input_stem() {
+        // Issue #4: a dot inside the stem must not be mistaken for an
+        // extension and replaced.
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        let h = fake_headers("flac");
+        let p = build_output_path(
+            Path::new("/in/artist - song name . xxx.ncm"),
+            &args,
+            &h,
+            AudioFormat::Flac,
+        )
+        .unwrap();
+        assert_eq!(p, PathBuf::from("/out/artist - song name . xxx.flac"));
+    }
+
+    #[test]
+    fn build_output_template_keeps_dots_in_values() {
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        args.template = Some("{artist} - {title}".into());
+        let mut h = fake_headers("mp3");
+        h.metadata.title = "Mr. Brightside".into();
+        let p =
+            build_output_path(Path::new("/in/whatever.ncm"), &args, &h, AudioFormat::Mp3).unwrap();
+        assert_eq!(p, PathBuf::from("/out/Artist - Mr. Brightside.mp3"));
+    }
+
+    #[test]
+    fn build_output_folder_mode_keeps_dots() {
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        args.folder = true;
+        let h = fake_headers("mp3");
+        let p =
+            build_output_path(Path::new("/in/Vol. 1.ncm"), &args, &h, AudioFormat::Mp3).unwrap();
+        assert_eq!(p, PathBuf::from("/out/Vol. 1/Vol. 1.mp3"));
+    }
+
     // ---- process_one -----------------------------------------------------
 
     /// Write a minimal NCM: real key segment, no metadata, an empty cover
@@ -809,6 +861,25 @@ song2.ncm
         ncm.extend_from_slice(&[0u8; 8]); // cover frame length + image length
         ncm.extend_from_slice(&audio_enc);
         std::fs::write(path, ncm).unwrap();
+    }
+
+    #[test]
+    fn process_one_writes_decrypted_audio_keeping_dotted_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("artist - song name . xxx.ncm");
+        let audio = b"ID3\x04\x00\x00\x00\x00\x00\x00 some frames";
+        write_ncm(&input, audio);
+        let mut args = cli_default();
+        args.no_tag = true;
+
+        match process_one(&input, &args).unwrap() {
+            Outcome::Written { path, format } => {
+                assert_eq!(path, dir.path().join("artist - song name . xxx.mp3"));
+                assert_eq!(format, AudioFormat::Mp3);
+                assert_eq!(std::fs::read(&path).unwrap(), audio);
+            }
+            _ => panic!("expected the file to be written"),
+        }
     }
 
     #[test]
