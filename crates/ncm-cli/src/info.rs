@@ -81,7 +81,9 @@ fn build_rows(path: &Path, file_size: u64, headers: &NcmHeaders) -> Vec<(&'stati
     rows.push((s.info_size, format_size(file_size)));
     rows.push((
         s.info_format,
-        format_detected_format(headers.effective_format(), headers.metadata.declared_format),
+        // The sniffed format, not `effective_format()`: echoing the metadata
+        // hint would hide audio that doesn't decrypt to anything playable.
+        format_detected_format(headers.detected_format, headers.metadata.declared_format),
     ));
     if let Some(b) = headers.metadata.bitrate {
         rows.push((s.info_bitrate, format!("{} kbps", b / 1000)));
@@ -126,14 +128,14 @@ fn cover_mime_label(mime: CoverMime) -> &'static str {
     }
 }
 
-fn format_detected_format(effective: AudioFormat, declared: AudioFormat) -> String {
-    let eff_name = audio_format_name(effective);
+fn format_detected_format(detected: AudioFormat, declared: AudioFormat) -> String {
+    let name = audio_format_name(detected);
     // Surface a mismatch between sniffed and declared only when the
     // declared hint is actually meaningful (not Unknown) and differs.
-    if declared != AudioFormat::Unknown && declared != effective {
-        format!("{} (declared: {})", eff_name, audio_format_name(declared))
+    if declared != AudioFormat::Unknown && declared != detected {
+        format!("{} (declared: {})", name, audio_format_name(declared))
     } else {
-        eff_name.to_string()
+        name.to_string()
     }
 }
 
@@ -211,6 +213,14 @@ mod tests {
         assert_eq!(
             format_detected_format(AudioFormat::Mp3, AudioFormat::Mp3),
             "MP3"
+        );
+    }
+
+    #[test]
+    fn format_unrecognized_audio_is_not_masked_by_declared() {
+        assert_eq!(
+            format_detected_format(AudioFormat::Unknown, AudioFormat::Mp3),
+            "unknown (declared: MP3)"
         );
     }
 

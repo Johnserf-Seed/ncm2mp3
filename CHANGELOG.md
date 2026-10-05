@@ -9,6 +9,42 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **网易云音乐 3.x 客户端下载的 NCM 解密后是噪音**
+  （[#3](https://github.com/Johnserf-Seed/ncm2mp3/issues/3)）：新版
+  客户端会在封面图片之后预留填充字节（常见情况是封面长度为 0、封面
+  帧长度不为 0），而解析器把这段填充当成了音频开头，导致整段音频
+  错位。现在按封面帧长度跳过填充，与
+  [taurusxin/ncmdump#26](https://github.com/taurusxin/ncmdump/issues/26)
+  的修复一致。旧版客户端的文件填充为空，输出逐字节不变。之前用旧版
+  本转换过这类文件的，请加 `--overwrite` 重新转换，否则会因为输出
+  已存在而被跳过。
+- **解密结果无法识别时不再报告成功**
+  （[#3](https://github.com/Johnserf-Seed/ncm2mp3/issues/3)）：解密后的
+  音频头部不匹配任何已知格式（MP3 / FLAC / M4A / WAV / OGG）时，该文件
+  计为失败（`✗`，退出码 1），且不写入输出文件；此前会按元数据声明的
+  格式写出乱码并显示 `✓`。`info` 也改为显示实际嗅探到的格式，例如
+  `unknown (declared: MP3)`。
+- **文件名中的 `.` 会截断输出文件名**
+  （[#4](https://github.com/Johnserf-Seed/ncm2mp3/issues/4)）：
+  `artist - song name . xxx.ncm` 之前会输出成
+  `artist - song name .flac`，现在只替换扩展名，得到
+  `artist - song name . xxx.flac`。模板生成的文件名（如标题
+  `Mr. Brightside`）和 `--folder` 模式有同样的问题，一并修复。
+
+### 弃用
+
+- `ncm2mp3-core`：`parser::skip_crc_gap` 和 `parser::read_cover` 不处理
+  封面帧填充，已标记弃用；请改用新增的 `parser::skip_crc` +
+  `parser::read_cover_frame`。`NcmDecoder` 内部已切换。
+
+### 测试
+
+- 新增 15 个测试，覆盖带填充 / 空封面的封面帧、3.x 客户端的文件结构
+  （144 字节密钥段）、无法识别的音频不写文件，以及文件名中带点的
+  各种输出路径。总测试数从 79 提升到 94。
+
 ## [0.3.1] - 2026-04-28
 
 ### 新增

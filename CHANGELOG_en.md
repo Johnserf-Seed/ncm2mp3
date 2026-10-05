@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **NCM files from NetEase Cloud Music 3.x decrypted to noise**
+  ([#3](https://github.com/Johnserf-Seed/ncm2mp3/issues/3)). Newer
+  clients reserve padding after the cover image (typically a zero-length
+  image in a non-empty cover frame), and the parser treated that padding
+  as the start of the audio, misaligning everything after it. The
+  padding is now skipped using the cover frame length — the same fix as
+  [taurusxin/ncmdump#26](https://github.com/taurusxin/ncmdump/issues/26).
+  Files from older clients have no padding and decode byte-for-byte as
+  before. If you already converted such files with an earlier version,
+  re-run with `--overwrite`; otherwise they're skipped because the
+  output exists.
+- **Unrecognizable output is no longer reported as success**
+  ([#3](https://github.com/Johnserf-Seed/ncm2mp3/issues/3)). When
+  the decrypted audio head matches no known format (MP3 / FLAC / M4A /
+  WAV / OGG), the file now counts as failed (`✗`, exit code 1) and
+  nothing is written; previously the noise was written under the
+  metadata's declared format with a `✓`. `info` now shows the sniffed
+  format too, e.g. `unknown (declared: MP3)`.
+- **A `.` in the file name truncated the output name**
+  ([#4](https://github.com/Johnserf-Seed/ncm2mp3/issues/4)).
+  `artist - song name . xxx.ncm` used to come out as
+  `artist - song name .flac`; now only the extension changes, giving
+  `artist - song name . xxx.flac`. Template-generated names (e.g. a
+  `Mr. Brightside` title) and `--folder` mode had the same bug and are
+  fixed too.
+
+### Deprecated
+
+- `ncm2mp3-core`: `parser::skip_crc_gap` and `parser::read_cover` don't
+  handle cover frame padding; use the new `parser::skip_crc` +
+  `parser::read_cover_frame` instead. `NcmDecoder` has switched over.
+
+### Tests
+
+- 15 new tests covering padded and image-less cover frames, the 3.x
+  client file layout (144-byte key segment), no output on unrecognized
+  audio, and dotted names across every output-path mode. Total test count
+  goes from 79 to 94.
+
 ## [0.3.1] - 2026-04-28
 
 ### Added

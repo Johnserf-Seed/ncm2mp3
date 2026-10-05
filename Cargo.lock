@@ -635,11 +635,14 @@ dependencies = [
 name = "ncm2mp3"
 version = "0.3.1"
 dependencies = [
+ "aes",
  "anyhow",
+ "cipher",
  "clap",
  "clap_complete",
  "console",
  "dirs",
+ "ecb",
  "env_logger",
  "globset",
  "lofty",

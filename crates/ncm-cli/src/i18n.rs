@@ -107,6 +107,8 @@ pub struct Strings {
     /// Generic hint used after the error: lists known subcommands.
     pub tip_subcommands: &'static str,
     pub err_rename_exhausted: &'static str,
+    /// The decrypted audio head matched no known format signature.
+    pub err_unrecognized_audio: &'static str,
 }
 
 pub const EN: Strings = Strings {
@@ -185,6 +187,7 @@ pub const EN: Strings = Strings {
     err_unknown_subcommand: "'{value}' is not a recognized subcommand or an existing input path. Did you mean `{suggestion}`?",
     tip_subcommands: "available subcommands: info, cover, watch, completion. Run `ncm2mp3 --help` for the full reference.",
     err_rename_exhausted: "rename strategy ran out of suffixes (1..9999) for {path}",
+    err_unrecognized_audio: "decrypted audio is not a recognizable MP3/FLAC/M4A/WAV/OGG stream; the file may be corrupt or an unsupported NCM variant. Nothing was written.",
 };
 
 pub const ZH: Strings = Strings {
@@ -263,6 +266,7 @@ pub const ZH: Strings = Strings {
     err_unknown_subcommand: "'{value}' 不是已知的子命令，也不是已存在的输入路径。你是不是想输入 `{suggestion}`？",
     tip_subcommands: "可用的子命令：info、cover、watch、completion。运行 `ncm2mp3 --help` 查看完整参数。",
     err_rename_exhausted: "rename 策略的后缀已用尽（1..9999）：{path}",
+    err_unrecognized_audio: "解密后的音频无法识别为 MP3/FLAC/M4A/WAV/OGG，文件可能已损坏或属于暂不支持的 NCM 变体，未写入任何文件",
 };
 
 impl Lang {

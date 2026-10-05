@@ -10,7 +10,7 @@ use crate::error::{NcmError, Result};
 use crate::format::{AudioFormat, STREAM_CHUNK_SIZE};
 use crate::metadata::NcmMetadata;
 use crate::parser::{
-    read_and_verify_magic, read_cover, read_metadata, read_rc4_key, skip_crc_gap, Cover,
+    read_and_verify_magic, read_cover_frame, read_metadata, read_rc4_key, skip_crc, Cover,
 };
 
 /// Headers and context available after parsing an NCM file's preamble.
@@ -26,12 +26,19 @@ pub struct NcmHeaders {
     pub cover: Option<Cover>,
     /// Format sniffed from the first decrypted audio bytes (not the
     /// metadata's hint — see [`Self::effective_format`]).
+    ///
+    /// [`AudioFormat::Unknown`] means the decrypted head matched no known
+    /// audio signature: the audio is most likely noise (a corrupt file or an
+    /// unsupported NCM variant), so check this before writing it out.
     pub detected_format: AudioFormat,
 }
 
 impl NcmHeaders {
     /// Prefer the format sniffed from the audio's magic bytes; fall back to
     /// the metadata's `format` hint when sniffing was inconclusive.
+    ///
+    /// The fallback only picks a file extension — it doesn't mean the audio
+    /// decrypted correctly. Check [`Self::detected_format`] for that.
     pub fn effective_format(&self) -> AudioFormat {
         if self.detected_format != AudioFormat::Unknown {
             self.detected_format
@@ -75,8 +82,8 @@ impl<R: Read> NcmDecoder<R> {
         read_and_verify_magic(&mut reader)?;
         let key = read_rc4_key(&mut reader)?;
         let metadata = read_metadata(&mut reader)?;
-        skip_crc_gap(&mut reader)?;
-        let cover = read_cover(&mut reader)?;
+        skip_crc(&mut reader)?;
+        let cover = read_cover_frame(&mut reader)?;
 
         let cipher = NcmStreamCipher::new(&key);
 

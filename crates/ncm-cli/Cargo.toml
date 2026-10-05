@@ -45,3 +45,7 @@ notify-debouncer-mini = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Only for building synthetic NCM files in pipeline tests.
+aes = { workspace = true }
+ecb = { workspace = true }
+cipher = { workspace = true }
