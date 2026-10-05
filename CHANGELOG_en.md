@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`scoop install` failed on Windows ARM64**
+  ([#8](https://github.com/Johnserf-Seed/ncm2mp3/pull/8)). Each Windows
+  release zip wraps its files in an `ncm2mp3-<tag>-<target>/` folder,
+  but the Scoop manifest's `bin` hardcoded the path inside the x86_64
+  zip. The ARM64 zip has no such path, so the install aborted while
+  creating the shim (`Can't shim ... File doesn't exist.`). The manifest
+  now sets `extract_dir` per architecture and `bin` is plain
+  `ncm2mp3.exe`; `update-dist.yml` writes both `extract_dir` values when
+  it syncs a new release. The bug dates back to when the Scoop manifest
+  was added. If an install failed before, just re-run `scoop install`;
+  Scoop cleans up the failed attempt automatically.
+
 ## [0.3.2] - 2026-10-04
 
 ### Fixed

@@ -9,6 +9,18 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **Windows ARM64 上 `scoop install` 失败**
+  （[#8](https://github.com/Johnserf-Seed/ncm2mp3/pull/8)）：Windows
+  发布压缩包内有一层 `ncm2mp3-<tag>-<target>/` 目录，而 Scoop 清单的
+  `bin` 写死成了 x86_64 压缩包里的路径。ARM64 压缩包里没有这个路径，
+  安装会在创建 shim 时中止（`Can't shim ... File doesn't exist.`）。
+  现在清单为每个架构分别设置 `extract_dir`，`bin` 改为
+  `ncm2mp3.exe`；`update-dist.yml` 同步新版本时也会写入这两个
+  `extract_dir`。该问题自 Scoop 清单加入起就存在。之前安装失败的，
+  重新执行 `scoop install` 即可，Scoop 会自动清理失败的安装。
+
 ## [0.3.2] - 2026-10-04
 
 ### 修复
