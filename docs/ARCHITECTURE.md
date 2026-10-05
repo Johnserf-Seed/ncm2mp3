@@ -30,10 +30,14 @@ All multi-byte integers are little-endian. All offsets below are relative to the
 | `meta_len`             | 4 B u32   | Length of the metadata blob that follows. May be `0`.                             |
 | Metadata blob          | `meta_len`| Encrypted JSON metadata (see §3.2) — omit if `meta_len == 0`                      |
 | CRC32                  | 4 B u32   | CRC of something. Not validated by this implementation.                            |
-| Gap                    | 5 B       | Unused. Skip.                                                                     |
-| `cover_len`            | 4 B u32   | Length of the cover blob. May be `0` (no cover).                                  |
-| Cover blob             | `cover_len`| Raw JPEG or PNG bytes — no encryption. Sniff MIME from magic bytes.              |
+| Unknown                | 1 B       | Called the "image version" by other implementations. Skip.                        |
+| `cover_frame_len`      | 4 B u32   | Bytes reserved for the cover frame: the image plus any padding after it.          |
+| `cover_len`            | 4 B u32   | Length of the cover image. May be `0` (no cover).                                 |
+| Cover image            | `cover_len`| Raw JPEG or PNG bytes — no encryption. Sniff MIME from magic bytes.              |
+| Cover padding          | `cover_frame_len - cover_len` | Skip. Empty in files from older clients (see below).          |
 | Audio stream           | to EOF    | RC4-variant-encrypted audio. Decrypt byte-by-byte by absolute offset (see §3.3). |
+
+**Don't skip `cover_frame_len`.** Older clients always wrote `cover_frame_len == cover_len`, so many parsers (this one included, until [#3](https://github.com/Johnserf-Seed/ncm2mp3/issues/3)) lumped it into a 5-byte "gap" and started the audio right after the image. NetEase Cloud Music 3.x reserves a larger frame — often with `cover_len == 0` — and such a parser decrypts the padding as audio, which also shifts the key stream for everything after it, so the whole output is noise. Same bug and fix upstream: [taurusxin/ncmdump#26](https://github.com/taurusxin/ncmdump/issues/26).
 
 Implemented in [`crates/ncm-core/src/parser.rs`](../crates/ncm-core/src/parser.rs) and orchestrated by [`crates/ncm-core/src/decoder.rs`](../crates/ncm-core/src/decoder.rs).
 
@@ -149,7 +153,9 @@ The metadata JSON has a `format` field, but it can be stale (a file's internal a
 
 If detection succeeds, that wins. If detection is inconclusive, we fall back to the metadata hint. The two-level check is [`AudioFormat::detect`](../crates/ncm-core/src/format.rs) + [`NcmHeaders::effective_format`](../crates/ncm-core/src/decoder.rs).
 
-`info` mode shows both when they disagree (e.g. `FLAC (declared: MP3)`), which is useful for spotting anomalous files.
+The fallback only picks a file extension; it says nothing about whether decryption worked. In practice an inconclusive sniff means the audio is noise (a corrupt file, or a layout the parser got wrong), so the CLI refuses such files: it writes nothing, prints `✗`, and exits non-zero.
+
+`info` mode shows the sniffed format, plus the declared one when they disagree (e.g. `FLAC (declared: MP3)`, or `unknown (declared: MP3)` for audio that didn't decrypt), which is useful for spotting anomalous files.
 
 ---
 
@@ -164,7 +170,7 @@ src/
 ├── format.rs     all magic constants, AudioFormat, CoverMime, sniffing
 ├── metadata.rs   RawMetadata (serde) + NcmMetadata (user-facing)
 ├── parser.rs     read_and_verify_magic / read_rc4_key / read_metadata /
-│                 skip_crc_gap / read_cover  (one function per segment)
+│                 skip_crc / read_cover_frame  (one function per segment)
 ├── decoder.rs    NcmDecoder + NcmHeaders — orchestrates parsing and
 │                 head-sniffs the audio format before streaming
 └── crypto/
@@ -212,6 +218,7 @@ rayon::ThreadPoolBuilder::num_threads(jobs)
         ▼
 files.par_iter().for_each(|f| process_one(f, args))
         │         - open NcmDecoder
+        │         - fail if the audio head matches no known format
         │         - filter by --format
         │         - build output path (template or input stem; +folder?)
         │         - conflict check

@@ -240,6 +240,13 @@ pub(crate) fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
     let (mut decoder, headers) =
         NcmDecoder::open(input).with_context(|| format!("failed to parse {}", input.display()))?;
 
+    // `effective_format` would fall back to the metadata's hint and happily
+    // name noise `.mp3`. If the decrypted head matches no audio signature,
+    // fail before writing anything rather than reporting a bogus success.
+    if headers.detected_format == AudioFormat::Unknown {
+        bail!("{}", t().err_unrecognized_audio);
+    }
+
     let format = headers.effective_format();
 
     if !args.format.is_empty() && !format_matches(&args.format, format) {
@@ -769,6 +776,57 @@ song2.ncm
         let h = fake_headers("mp3");
         let p = build_output_path(Path::new("/in/.ncm"), &args, &h, AudioFormat::Mp3).unwrap();
         assert_eq!(p.file_name().unwrap().to_str().unwrap(), ".ncm.mp3");
+    }
+
+    // ---- process_one -----------------------------------------------------
+
+    /// Write a minimal NCM: real key segment, no metadata, an empty cover
+    /// frame, and `audio` under the NCM stream cipher.
+    fn write_ncm(path: &Path, audio: &[u8]) {
+        use aes::Aes128;
+        use cipher::{block_padding::Pkcs7, BlockModeEncrypt, KeyInit};
+        use ncm_core::crypto::NcmStreamCipher;
+        use ncm_core::format::{CORE_KEY, KEY_PREFIX, KEY_XOR_MASK, MAGIC};
+
+        let rc4_key = b"pipeline-test-key";
+        let mut key_plain = KEY_PREFIX.to_vec();
+        key_plain.extend_from_slice(rc4_key);
+        let mut key_segment = ecb::Encryptor::<Aes128>::new((&CORE_KEY).into())
+            .encrypt_padded_vec::<Pkcs7>(&key_plain);
+        for byte in &mut key_segment {
+            *byte ^= KEY_XOR_MASK;
+        }
+
+        let mut audio_enc = audio.to_vec();
+        NcmStreamCipher::new(rc4_key).apply(&mut audio_enc, 0);
+
+        let mut ncm = MAGIC.to_vec();
+        ncm.extend_from_slice(&[0, 0]); // gap
+        ncm.extend_from_slice(&(key_segment.len() as u32).to_le_bytes());
+        ncm.extend_from_slice(&key_segment);
+        ncm.extend_from_slice(&0u32.to_le_bytes()); // no metadata
+        ncm.extend_from_slice(&[0u8; 5]); // crc32 + image version
+        ncm.extend_from_slice(&[0u8; 8]); // cover frame length + image length
+        ncm.extend_from_slice(&audio_enc);
+        std::fs::write(path, ncm).unwrap();
+    }
+
+    #[test]
+    fn process_one_fails_on_unrecognized_audio_without_writing() {
+        // Issue #3: audio that decrypts to noise used to be written out and
+        // counted as a success.
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("noise.ncm");
+        write_ncm(&input, &[0x0b, 0x86, 0x8c, 0xed, 0x8e, 0x3a, 0x75, 0x45]);
+        let out_dir = dir.path().join("out");
+        let mut args = cli_default();
+        args.output = Some(out_dir.clone());
+
+        let err = process_one(&input, &args)
+            .err()
+            .expect("unrecognized audio must be an error");
+        assert_eq!(err.to_string(), t().err_unrecognized_audio);
+        assert!(!out_dir.exists(), "nothing should be written");
     }
 
     // ---- write_cover_next_to ---------------------------------------------

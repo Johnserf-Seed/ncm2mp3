@@ -313,6 +313,8 @@ Usage: ncm2mp3 [OPTIONS] <INPUT>
 | `RIFF...WAVE` | WAV | `.wav` |
 | `OggS` | Ogg Vorbis | `.ogg` |
 
+解密后的头部如果不匹配上表任何一种，该文件会记为失败（`✗`，退出码 1），且不写入输出文件——这几乎总意味着文件已损坏或属于暂不支持的 NCM 变体，而不是某种少见格式。
+
 ## 项目结构
 
 这是一个 Cargo workspace，由两个 crate 组成：
@@ -341,8 +343,8 @@ NCM 文件的二进制布局（按顺序）：
 Magic 'CTENFDAM' (8B) + Gap (2B)
 → RC4 密钥长度 (4B LE) + RC4 密钥数据  [XOR 0x64 → AES-128-ECB(CORE_KEY) → strip "neteasecloudmusic"]
 → Metadata 长度 (4B LE) + Metadata 数据 [XOR 0x63 → strip "163 key(Don't modify):" → Base64 → AES-128-ECB(META_KEY) → strip "music:" → JSON]
-→ CRC32 (4B) + Gap (5B)
-→ Cover 长度 (4B LE) + Cover 原始字节（JPEG 或 PNG）
+→ CRC32 (4B) + 未知字段 (1B)
+→ 封面帧长度 (4B LE) + Cover 长度 (4B LE) + Cover 原始字节（JPEG 或 PNG）+ 填充至封面帧长度（旧版客户端为空）
 → 音频数据（到文件末尾）[RC4 流加密：KSA 标准 RC4，PRGA 为 NCM 自定义公式]
 ```
 

@@ -315,6 +315,8 @@ Decryption preserves whatever format is inside the NCM. Detection is by magic by
 | `RIFF...WAVE` | WAV | `.wav` |
 | `OggS` | Ogg Vorbis | `.ogg` |
 
+If the decrypted head matches none of these, the file counts as failed (`✗`, exit code 1) and nothing is written — that almost always means a corrupt file or an unsupported NCM variant, not an exotic format.
+
 ## Project layout
 
 Cargo workspace with two crates:
@@ -343,8 +345,8 @@ NCM file layout (sequential):
 Magic 'CTENFDAM' (8B) + Gap (2B)
 → RC4 key length (4B LE) + RC4 key blob  [XOR 0x64 → AES-128-ECB(CORE_KEY) → strip "neteasecloudmusic"]
 → Metadata length (4B LE) + metadata blob [XOR 0x63 → strip "163 key(Don't modify):" → Base64 → AES-128-ECB(META_KEY) → strip "music:" → JSON]
-→ CRC32 (4B) + Gap (5B)
-→ Cover length (4B LE) + raw cover bytes (JPEG or PNG)
+→ CRC32 (4B) + unknown (1B)
+→ Cover frame length (4B LE) + cover length (4B LE) + raw cover bytes (JPEG or PNG) + padding up to the frame length (empty from older clients)
 → Audio data until EOF [NCM's RC4-like stream cipher]
 ```
 

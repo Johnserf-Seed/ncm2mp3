@@ -118,9 +118,28 @@ pub fn read_metadata<R: Read>(reader: &mut R) -> Result<NcmMetadata> {
     Ok(NcmMetadata::from_raw(raw))
 }
 
-/// Skip the 4-byte CRC32 + 5-byte gap that sits between metadata and cover.
-/// We don't validate the CRC — its computation isn't documented and skipping
-/// it hasn't caused problems on real files.
+fn skip_bytes<R: Read>(reader: &mut R, len: u32, field: &'static str) -> Result<()> {
+    let skipped = std::io::copy(&mut reader.by_ref().take(len as u64), &mut std::io::sink())?;
+    if skipped < len as u64 {
+        return Err(NcmError::UnexpectedEof(field));
+    }
+    Ok(())
+}
+
+/// Skip the 4-byte CRC32 and the 1-byte field after it (other
+/// implementations call it the "image version") that sit between the
+/// metadata and the cover frame. We don't validate the CRC — its computation
+/// isn't documented and skipping it hasn't caused problems on real files.
+pub fn skip_crc<R: Read>(reader: &mut R) -> Result<()> {
+    skip_bytes(reader, 5, "crc")
+}
+
+/// Skip 9 bytes between metadata and cover, treating the cover frame length
+/// as part of an opaque gap.
+#[deprecated(
+    note = "loses the cover frame length, so audio decrypts to noise on files with a padded \
+            cover frame (NetEase Cloud Music 3.x); use `skip_crc` + `read_cover_frame`"
+)]
 pub fn skip_crc_gap<R: Read>(reader: &mut R) -> Result<()> {
     let mut skip = [0u8; 9];
     reader
@@ -138,10 +157,46 @@ pub struct Cover {
     pub data: Vec<u8>,
 }
 
-/// Read the cover segment. Returns `None` when the declared cover length is
-/// zero (the NCM carried no cover).
+/// Read the cover frame and leave the reader at the first audio byte.
+///
+/// The frame is a `u32` frame length, a `u32` image length, the image, then
+/// padding up to the frame length. Older clients wrote frames exactly as long
+/// as the image, but NetEase Cloud Music 3.x reserves extra space (often with
+/// an empty image), so stopping right after the image leaves the reader
+/// inside the frame and the audio decrypts to noise.
+///
+/// Returns `None` when the image length is zero (the NCM carried no cover).
+pub fn read_cover_frame<R: Read>(reader: &mut R) -> Result<Option<Cover>> {
+    let frame_len = read_u32_le(reader, "cover frame length")?;
+    if frame_len > MAX_SEGMENT_LEN {
+        return Err(NcmError::LengthTooLarge {
+            declared: frame_len as u64,
+            limit: MAX_SEGMENT_LEN as u64,
+        });
+    }
+    let image_len = read_u32_le(reader, "cover length")?;
+    let cover = read_image(reader, image_len)?;
+    // A frame shorter than its image is malformed; treat it as unpadded, like
+    // the pre-3.x layout, and let the audio head sniff flag anything worse.
+    skip_bytes(
+        reader,
+        frame_len.saturating_sub(image_len),
+        "cover frame padding",
+    )?;
+    Ok(cover)
+}
+
+/// Read a length-prefixed cover image, ignoring any cover frame padding.
+#[deprecated(
+    note = "doesn't skip cover frame padding, so audio decrypts to noise on files from \
+            NetEase Cloud Music 3.x; use `skip_crc` + `read_cover_frame`"
+)]
 pub fn read_cover<R: Read>(reader: &mut R) -> Result<Option<Cover>> {
     let len = read_u32_le(reader, "cover length")?;
+    read_image(reader, len)
+}
+
+fn read_image<R: Read>(reader: &mut R, len: u32) -> Result<Option<Cover>> {
     if len == 0 {
         return Ok(None);
     }
@@ -186,5 +241,73 @@ mod tests {
         let mut cur = Cursor::new(bytes);
         let result = read_rc4_key(&mut cur);
         assert!(matches!(result, Err(NcmError::LengthTooLarge { .. })));
+    }
+
+    const JPEG_HEAD: [u8; 4] = [0xFF, 0xD8, 0xFF, 0xE0];
+
+    fn cover_frame(frame_len: u32, image: &[u8], padding: &[u8]) -> Cursor<Vec<u8>> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&frame_len.to_le_bytes());
+        bytes.extend_from_slice(&(image.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(image);
+        bytes.extend_from_slice(padding);
+        bytes.extend_from_slice(b"AUDIO");
+        Cursor::new(bytes)
+    }
+
+    fn rest(cur: &mut Cursor<Vec<u8>>) -> Vec<u8> {
+        let mut out = Vec::new();
+        cur.read_to_end(&mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn cover_frame_without_padding() {
+        let mut cur = cover_frame(4, &JPEG_HEAD, &[]);
+        let cover = read_cover_frame(&mut cur).unwrap().unwrap();
+        assert_eq!(cover.mime, CoverMime::Jpeg);
+        assert_eq!(cover.data, JPEG_HEAD);
+        assert_eq!(rest(&mut cur), b"AUDIO");
+    }
+
+    #[test]
+    fn cover_frame_skips_padding_after_image() {
+        let mut cur = cover_frame(10, &JPEG_HEAD, &[0xAA; 6]);
+        let cover = read_cover_frame(&mut cur).unwrap().unwrap();
+        assert_eq!(cover.data, JPEG_HEAD);
+        assert_eq!(rest(&mut cur), b"AUDIO");
+    }
+
+    #[test]
+    fn cover_frame_with_empty_image_still_skips_frame() {
+        // NetEase Cloud Music 3.x: image length 0, frame length non-zero.
+        let mut cur = cover_frame(8, &[], &[0xAA; 8]);
+        assert!(read_cover_frame(&mut cur).unwrap().is_none());
+        assert_eq!(rest(&mut cur), b"AUDIO");
+    }
+
+    #[test]
+    fn cover_frame_shorter_than_image_is_treated_as_unpadded() {
+        let mut cur = cover_frame(0, &JPEG_HEAD, &[]);
+        assert!(read_cover_frame(&mut cur).unwrap().is_some());
+        assert_eq!(rest(&mut cur), b"AUDIO");
+    }
+
+    #[test]
+    fn cover_frame_padding_past_eof_errors() {
+        let mut cur = cover_frame(1_000, &[], &[]);
+        assert!(matches!(
+            read_cover_frame(&mut cur),
+            Err(NcmError::UnexpectedEof("cover frame padding"))
+        ));
+    }
+
+    #[test]
+    fn cover_frame_rejects_oversized_frame() {
+        let mut cur = cover_frame(MAX_SEGMENT_LEN + 1, &[], &[]);
+        assert!(matches!(
+            read_cover_frame(&mut cur),
+            Err(NcmError::LengthTooLarge { .. })
+        ));
     }
 }
