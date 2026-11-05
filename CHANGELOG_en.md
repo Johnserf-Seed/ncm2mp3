@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `--from-file` list was unusable if any line wasn't valid UTF-8**
+  ([#14](https://github.com/Johnserf-Seed/ncm2mp3/pull/14)). A Linux file
+  name can be any bytes, such as a GBK-encoded Chinese name, and
+  `find . -name '*.ncm' > list.txt` writes those bytes into the list as
+  is. The list was read as UTF-8, so such a line stopped the run with
+  `failed to read line N of …` (caused by
+  `stream did not contain valid UTF-8`) before a single file was
+  converted. Each line is now read as raw bytes and used as the path
+  byte for byte; surrounding whitespace and the `\r` of CRLF endings are
+  still trimmed, and blank lines and `#` comments are still skipped.
+  Windows paths are Unicode, so there a line naming a file still has to
+  be UTF-8 (a comment no longer does), and the error now says outright
+  which line isn't UTF-8 and to save the list as UTF-8. The bug dates
+  back to 0.2.0, when `--from-file` was added.
+- **A UTF-8 BOM at the start of a `--from-file` list broke its first
+  entry** ([#14](https://github.com/Johnserf-Seed/ncm2mp3/pull/14)). Many
+  Windows tools put a BOM at the start of a file they save as "UTF-8",
+  such as Windows PowerShell 5.1's `Out-File -Encoding utf8` and older
+  versions of Notepad. The BOM was taken as part of the first entry: a
+  path there failed with `input path does not exist` even though the
+  file existed, with nothing visible to explain why, and a `#` comment
+  there was taken for a path. Either way the whole run stopped. A BOM at
+  the start of the list is now skipped. The bug dates back to 0.2.0,
+  when `--from-file` was added.
 - **`scoop install` failed on Windows ARM64**
   ([#8](https://github.com/Johnserf-Seed/ncm2mp3/pull/8)). Each Windows
   release zip wraps its files in an `ncm2mp3-<tag>-<target>/` folder,

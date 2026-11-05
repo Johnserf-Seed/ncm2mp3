@@ -195,21 +195,64 @@ fn collect_from_path(input: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
 }
 
 /// Read a text file as a newline-separated list of paths. Blank lines and
-/// `#`-prefixed comments are ignored. Whitespace is trimmed.
+/// `#`-prefixed comments are ignored. Whitespace is trimmed, and so is a
+/// UTF-8 byte order mark at the start of the file.
+///
+/// The list is read as bytes, not as UTF-8, since a Unix file name can be
+/// any bytes: `find . -name '*.ncm' > list.txt` writes a GBK-encoded
+/// `歌.ncm` as `\xb8\xe8.ncm`, and on Unix such a line becomes the path byte
+/// for byte. Windows paths are Unicode, so there a line naming a file has
+/// to be UTF-8, and one that isn't is an error that gives its line number.
 fn read_file_list(list_path: &Path) -> Result<Vec<PathBuf>> {
     let file = File::open(list_path)
         .with_context(|| format!("failed to open --from-file list: {}", list_path.display()))?;
     let reader = BufReader::new(file);
     let mut out = Vec::new();
-    for (idx, line) in reader.lines().enumerate() {
+    for (idx, line) in reader.split(b'\n').enumerate() {
         let line = line.with_context(|| {
             format!("failed to read line {} of {}", idx + 1, list_path.display())
         })?;
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
+        // Many Windows tools start a file saved as "UTF-8" with a BOM
+        // (Windows PowerShell's `Out-File -Encoding utf8`, older Notepad).
+        // It's not part of the first entry, and would hide a `#` there.
+        let line = match line.strip_prefix(b"\xef\xbb\xbf") {
+            Some(rest) if idx == 0 => rest,
+            _ => &line[..],
+        };
+        let entry = match std::str::from_utf8(line) {
+            // Trimmed exactly as before, so a list that worked still does.
+            Ok(text) => text.trim().as_bytes(),
+            // Without knowing the encoding, only ASCII whitespace (the `\r`
+            // of a CRLF ending included) can be told apart. That's safe for
+            // GBK and the like: a multi-byte character never contains one.
+            // By hand, as `<[u8]>::trim_ascii` is newer than our MSRV.
+            Err(_) => {
+                let start = line.iter().position(|b| !b.is_ascii_whitespace());
+                let end = line.iter().rposition(|b| !b.is_ascii_whitespace());
+                match (start, end) {
+                    (Some(start), Some(end)) => &line[start..=end],
+                    _ => &[],
+                }
+            }
+        };
+        if entry.is_empty() || entry.starts_with(b"#") {
             continue;
         }
-        out.push(PathBuf::from(trimmed));
+        #[cfg(unix)]
+        let path = {
+            use std::os::unix::ffi::OsStrExt;
+            PathBuf::from(OsStr::from_bytes(entry))
+        };
+        #[cfg(not(unix))]
+        let path = match std::str::from_utf8(entry) {
+            Ok(entry) => PathBuf::from(entry),
+            Err(_) => bail!(
+                "line {} of {} is not valid UTF-8; save the list as UTF-8",
+                idx + 1,
+                list_path.display()
+            ),
+        };
+        out.push(path);
     }
     Ok(out)
 }
@@ -630,6 +673,93 @@ song2.ncm
     fn read_file_list_missing_file_errors() {
         let r = read_file_list(Path::new("/nonexistent/list.txt"));
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn read_file_list_handles_crlf_and_a_missing_final_newline() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("list.txt");
+        std::fs::write(&p, "# comment\r\nsong1.ncm\r\n\r\nsong2.ncm").unwrap();
+        let v = read_file_list(&p).unwrap();
+        assert_eq!(
+            v,
+            vec![PathBuf::from("song1.ncm"), PathBuf::from("song2.ncm")]
+        );
+    }
+
+    #[test]
+    fn read_file_list_still_trims_unicode_whitespace() {
+        // A UTF-8 line is trimmed like `str::trim`, as it always was, so a
+        // full-width space typed with a Chinese IME stays out of the path.
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("list.txt");
+        std::fs::write(&p, "\u{3000}歌.ncm\u{3000}\n\u{3000}# 注释\n\u{3000}\n").unwrap();
+        let v = read_file_list(&p).unwrap();
+        assert_eq!(v, vec![PathBuf::from("歌.ncm")]);
+    }
+
+    #[test]
+    fn read_file_list_skips_a_utf8_bom() {
+        // What Windows PowerShell's `Out-File -Encoding utf8` writes: a BOM,
+        // then CRLF lines. The BOM must neither stick to the first path nor
+        // hide a comment.
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("list.txt");
+        std::fs::write(&p, "\u{feff}song1.ncm\r\nsong2.ncm\r\n").unwrap();
+        assert_eq!(
+            read_file_list(&p).unwrap(),
+            vec![PathBuf::from("song1.ncm"), PathBuf::from("song2.ncm")]
+        );
+        std::fs::write(&p, "\u{feff}# list\r\nsong1.ncm\r\n").unwrap();
+        assert_eq!(
+            read_file_list(&p).unwrap(),
+            vec![PathBuf::from("song1.ncm")]
+        );
+    }
+
+    // `\xb8\xe8` is "歌" in GBK. A Linux file name may well be that, and
+    // `find . -name '*.ncm' > list.txt` writes it to the list as is. The
+    // list file itself has a UTF-8 name, so the Unix tests run on macOS too.
+
+    #[cfg(unix)]
+    #[test]
+    fn read_file_list_keeps_non_utf8_path_bytes() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("list.txt");
+        std::fs::write(&p, b"\xb8\xe8.ncm\n").unwrap();
+        let v = read_file_list(&p).unwrap();
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].as_os_str().as_bytes(), b"\xb8\xe8.ncm");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_file_list_trims_and_skips_non_utf8_lines() {
+        use std::os::unix::ffi::OsStrExt;
+        // CRLF, a GBK comment ("# 歌曲列表") and a padded GBK name: only
+        // the ASCII whitespace goes, the GBK bytes stay.
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("list.txt");
+        let body = b"# \xb8\xe8\xc7\xfa\xc1\xd0\xb1\xed\r\n \t\xb8\xe8.ncm \r\n\r\nsong.ncm\r\n";
+        std::fs::write(&p, body).unwrap();
+        let v = read_file_list(&p).unwrap();
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[0].as_os_str().as_bytes(), b"\xb8\xe8.ncm");
+        assert_eq!(v[1], PathBuf::from("song.ncm"));
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn read_file_list_names_the_line_that_is_not_utf8() {
+        // Windows paths are Unicode, so a GBK name can't be used there; the
+        // error says which line it's on. A GBK comment is still skipped.
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("list.txt");
+        std::fs::write(&p, b"# \xb8\xe8\r\nsong.ncm\r\n\xb8\xe8.ncm\r\n").unwrap();
+        let err = read_file_list(&p).unwrap_err().to_string();
+        assert!(err.contains("line 3 of"), "{err}");
+        assert!(err.contains("not valid UTF-8"), "{err}");
     }
 
     // ---- resolve_conflict / find_free_rename ------------------------------
