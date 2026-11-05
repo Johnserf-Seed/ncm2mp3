@@ -22,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it syncs a new release. The bug dates back to when the Scoop manifest
   was added. If an install failed before, just re-run `scoop install`;
   Scoop cleans up the failed attempt automatically.
+- **A folder named like a subcommand prefix was taken for that
+  subcommand** ([#10](https://github.com/Johnserf-Seed/ncm2mp3/pull/10)).
+  Since 0.3.1 a unique prefix expands to the full subcommand name, so
+  with an `in/` folder in the current directory, `ncm2mp3 in -o out` ran
+  as `ncm2mp3 info …` and failed with
+  `error: unexpected argument '-o' found`. Folders named `w`, `cov`,
+  `comp` or `h` hit the same bug (`watch`, `cover`, `completion`,
+  `help`). Now a first positional argument that exists on disk is
+  always the input to decrypt; prefixes that aren't paths (`inf`,
+  `comp`) still expand to the subcommand. An exact subcommand name still
+  wins, so use `./info` to decrypt a folder named `info`.
 
 ## [0.3.2] - 2026-10-04
 
