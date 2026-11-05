@@ -23,6 +23,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was added. If an install failed before, just re-run `scoop install`;
   Scoop cleans up the failed attempt automatically.
 
+### Security
+
+All of these were found by GitHub code scanning.
+
+- **Output files were written through symlinks, and parallel jobs could
+  corrupt each other's output.** Decrypted audio, `--folder` mode's
+  `cover.jpg` / `cover.png`, and covers exported by the `cover`
+  subcommand were all written in a way that follows symlinks, and the
+  "does the output exist?" check was a separate step from creating the
+  file. Anyone who could put files in the input or output directory could
+  plant (or race in after the check) a symlink under the output name and
+  make ncm2mp3 truncate and overwrite whatever it pointed to, with your
+  permissions. When two inputs mapped to the same output name (e.g. via a
+  template), parallel jobs wrote it at the same time: both reported `✓`,
+  and the file ended up with both songs' data mixed together. Now the
+  `skip` (default) and `rename` policies check and create in one atomic
+  "create only if absent" step, which also treats a symlink there
+  (dangling or not) as existing. `--overwrite` and the `--folder` cover
+  write a temporary file in the same directory and rename it into place,
+  which replaces the directory entry instead of writing through a link.
+  Tags are written through the already-open file handle instead of
+  reopening the path. A conversion that fails now also deletes its
+  half-written output, so the next run doesn't skip it as existing.
+  Behavior change: `--overwrite` now replaces a symlink at the
+  destination with a regular file instead of writing to its target.
+- **A crafted NCM file could crash the whole process.** A key blob that
+  decrypts to just the `neteasecloudmusic` prefix, with no key after it,
+  tripped an assertion in the stream cipher. Release builds use
+  `panic = "abort"`, so a batch run died on the spot (exit code 134) and
+  the remaining files were never processed. Such a file is now rejected
+  as an invalid key and only that file fails. In `ncm2mp3-core`,
+  `NcmError::InvalidKeyPrefix` now covers this case too, and its message
+  is now
+  `invalid RC4 key blob (expected 'neteasecloudmusic' followed by the key)`.
+- **Header segment length limits were far too high.** The key, metadata
+  and cover segments shared a 64 MiB limit, while real keys and metadata
+  are a hundred-odd bytes to a few KiB. Decryption briefly holds several
+  copies of these segments, so one crafted file could take hundreds of MiB, and
+  several processed in parallel could abort the process on a failed
+  allocation; the parser also allocated the declared length up front, even
+  when the file was much shorter. The key segment is now capped at 64 KiB
+  and the metadata segment at 1 MiB (new in `ncm2mp3-core`:
+  `format::MAX_KEY_LEN` / `format::MAX_META_LEN`); covers keep 64 MiB.
+  Buffers grow only as data is actually read.
+- **Terminal control characters in metadata and file names were printed
+  verbatim.** `info` printed the NCM metadata's title, artist and album
+  as-is, and file names appeared as-is in every per-file status and error
+  line. ANSI / OSC escape sequences embedded in them were executed by the
+  terminal, which could spoof what's on screen (clear it, fake a `Title:`
+  row) or trigger terminal features (e.g. rewrite the clipboard via
+  OSC 52). Control characters and bidirectional-text controls in that text
+  are now shown as escapes like `\u{1b}`. Tag contents and output file
+  names are unchanged.
+- **Script injection in `update-dist.yml`.** The workflow spliced the tag
+  name (`workflow_run.head_branch`, or the `tag` input of a manual run)
+  straight into a bash script, so a value containing `$(...)`, `;` and the
+  like would run as commands, in a job holding `contents: write` and
+  `pull-requests: write`. Exploiting it took the ability to push a tag or
+  trigger the workflow, i.e. write access to the repository. The tag is
+  now passed through an environment variable and must look like `v1.2.3`
+  (optionally with a suffix such as `-rc.1`); anything else fails the run.
+
+### Tests
+
+- 39 new tests covering: a symlink (including a dangling one) planted at
+  the output under each conflict policy, another job still writing the
+  same output name, `--overwrite`'s atomic replace and failure cleanup,
+  tagging through the file handle, a key blob holding only the prefix,
+  per-segment length limits and truncated segments, and terminal
+  control-character escaping. Test count goes from 94 to 133, of which
+  the 12 symlink tests run on Unix only.
+
 ## [0.3.2] - 2026-10-04
 
 ### Fixed
