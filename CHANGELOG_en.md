@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An argument that isn't valid UTF-8 crashed the CLI**. File names on
+  Linux don't have to be valid UTF-8; GBK-encoded names are one example.
+  Passing one, say as the input file or folder, made `ncm2mp3` panic
+  before it parsed anything, with
+  ``called `Result::unwrap()` on an `Err` value`` and exit code 101.
+  The culprit was the early pass that looks for `--lang` so that `--help`
+  itself comes out in the right language: it only accepted UTF-8. It now
+  skips arguments that aren't UTF-8, and parsing goes on as usual. The
+  bug dates back to 0.1.0.
 - **`scoop install` failed on Windows ARM64**
   ([#8](https://github.com/Johnserf-Seed/ncm2mp3/pull/8)). Each Windows
   release zip wraps its files in an `ncm2mp3-<tag>-<target>/` folder,
