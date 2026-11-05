@@ -339,18 +339,19 @@ fn resolve_conflict(planned: &Path, strategy: ConflictStrategy) -> Result<Confli
 /// Probe `foo-1.ext`, `foo-2.ext`, … up to a reasonable ceiling.
 fn find_free_rename(planned: &Path) -> Result<ConflictOutcome> {
     let parent = planned.parent().unwrap_or_else(|| Path::new(""));
-    let stem = planned
-        .file_stem()
-        .and_then(OsStr::to_str)
-        .unwrap_or("output");
-    let ext = planned.extension().and_then(OsStr::to_str).unwrap_or("");
+    // Built from `OsStr` pieces, not `format!`, so a stem that isn't valid
+    // UTF-8 comes through as is (see `build_output_path`).
+    let stem = planned.file_stem().unwrap_or(OsStr::new("output"));
+    let ext = planned.extension().filter(|e| !e.is_empty());
 
     for n in 1..=9999u32 {
-        let candidate = if ext.is_empty() {
-            parent.join(format!("{stem}-{n}"))
-        } else {
-            parent.join(format!("{stem}-{n}.{ext}"))
-        };
+        let mut name = stem.to_os_string();
+        name.push(format!("-{n}"));
+        if let Some(ext) = ext {
+            name.push(".");
+            name.push(ext);
+        }
+        let candidate = parent.join(name);
         if !candidate.exists() {
             return Ok(ConflictOutcome::Write(candidate));
         }
@@ -414,11 +415,12 @@ fn build_output_path(
             // Default: preserve the input file's stem verbatim, just switch
             // the extension to the detected audio format. No sanitization —
             // if the name is valid on disk going in, it's valid going out.
+            // Kept as an `OsStr`: on Linux a name needn't be valid UTF-8
+            // (e.g. GBK-encoded), and converting it to `str` would fail.
             let stem = input
                 .file_stem()
-                .and_then(|s| s.to_str())
                 .filter(|s| !s.is_empty())
-                .unwrap_or("unknown");
+                .unwrap_or(OsStr::new("unknown"));
             out.push(stem);
         }
     }
@@ -456,6 +458,8 @@ mod tests {
     use crate::i18n::Lang;
     use ncm_core::{NcmHeaders, NcmMetadata};
     use std::io::Write;
+    #[cfg(unix)]
+    use std::os::unix::ffi::OsStrExt;
 
     // ---- Test fixtures ---------------------------------------------------
 
@@ -781,13 +785,73 @@ song2.ncm
         // string `.ncm` for hidden-file-style names, so the stem keeps
         // the leading dot and the extension swap appends rather than
         // replaces. Result is `.ncm.mp3` — weird but a valid file path.
-        // The "unknown" fallback only triggers on truly empty stems
-        // (rare in practice; mostly trailing-slash paths).
+        // The "unknown" fallback is only for an input with no file name,
+        // where `file_stem` is `None` (`/`, `foo/..`); a stem is never
+        // empty, and a trailing slash doesn't strip it (`foo.ncm/` has
+        // stem `foo`). A stem that isn't valid UTF-8 keeps its raw bytes,
+        // see `build_output_default_keeps_non_utf8_stem`.
         let mut args = cli_default();
         args.output = Some(PathBuf::from("/out"));
         let h = fake_headers("mp3");
         let p = build_output_path(Path::new("/in/.ncm"), &args, &h, AudioFormat::Mp3).unwrap();
         assert_eq!(p.file_name().unwrap().to_str().unwrap(), ".ncm.mp3");
+    }
+
+    #[test]
+    fn build_output_default_falls_back_to_unknown_without_a_file_name() {
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        let h = fake_headers("mp3");
+        let p = build_output_path(Path::new("/in/.."), &args, &h, AudioFormat::Mp3).unwrap();
+        assert_eq!(p, PathBuf::from("/out/unknown.mp3"));
+    }
+
+    // A Linux file name needn't be valid UTF-8: `\xb8\xe8` is "歌" in GBK.
+    // macOS refuses such names on disk, so these tests only build paths
+    // and never create the files.
+
+    #[cfg(unix)]
+    fn non_utf8(bytes: &[u8]) -> &Path {
+        Path::new(OsStr::from_bytes(bytes))
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn build_output_default_keeps_non_utf8_stem() {
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        let h = fake_headers("mp3");
+        let input = non_utf8(b"/in/\xb8\xe8.ncm");
+        let p = build_output_path(input, &args, &h, AudioFormat::Mp3).unwrap();
+        assert_eq!(p.parent().unwrap(), Path::new("/out"));
+        assert_eq!(p.file_name().unwrap().as_bytes(), b"\xb8\xe8.mp3");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn build_output_folder_mode_keeps_non_utf8_stem() {
+        let mut args = cli_default();
+        args.output = Some(PathBuf::from("/out"));
+        args.folder = true;
+        let h = fake_headers("mp3");
+        let input = non_utf8(b"/in/\xb8\xe8.ncm");
+        let p = build_output_path(input, &args, &h, AudioFormat::Mp3).unwrap();
+        assert_eq!(p.as_os_str().as_bytes(), b"/out/\xb8\xe8/\xb8\xe8.mp3");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn find_free_rename_keeps_non_utf8_stem() {
+        // Nothing exists in a fresh temp dir, so probing stops at `-1`.
+        let dir = tempfile::tempdir().unwrap();
+        let planned = dir.path().join(non_utf8(b"\xb8\xe8.mp3"));
+        match find_free_rename(&planned).unwrap() {
+            ConflictOutcome::Write(w) => {
+                assert_eq!(w.parent().unwrap(), dir.path());
+                assert_eq!(w.file_name().unwrap().as_bytes(), b"\xb8\xe8-1.mp3");
+            }
+            ConflictOutcome::Skip => panic!("rename never skips"),
+        }
     }
 
     #[test]

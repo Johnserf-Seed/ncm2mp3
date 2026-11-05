@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Input files whose names aren't valid UTF-8 were written as
+  `unknown.<ext>`** ([#12](https://github.com/Johnserf-Seed/ncm2mp3/pull/12)).
+  File names on Linux don't have to be valid UTF-8; GBK-encoded Chinese
+  names are one example. Default naming is meant to reuse the input's
+  file name, but for such a name it fell back to `unknown` (and so did
+  the folder name in `--folder` mode). Several such files in one batch
+  all landed on that one name: the default `skip` policy converted only
+  one and skipped the rest because the output existed,
+  `--on-conflict rename` produced names like `unknown-1.mp3`, and
+  `--overwrite` had them overwrite each other. The name's raw bytes are
+  now kept: a GBK-encoded `歌.ncm` becomes a GBK-encoded `歌.mp3`, and
+  `rename` appends `-1`, `-2`, … to the original name too. The bug dates
+  back to 0.1.0. After upgrading, just run again to get the original
+  names; any `unknown.<ext>`, `unknown-1.<ext>`, … left over from before
+  can be deleted.
 - **`scoop install` failed on Windows ARM64**
   ([#8](https://github.com/Johnserf-Seed/ncm2mp3/pull/8)). Each Windows
   release zip wraps its files in an `ncm2mp3-<tag>-<target>/` folder,
