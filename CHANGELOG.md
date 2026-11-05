@@ -11,6 +11,17 @@
 
 ### 修复
 
+- **文件名不是合法 UTF-8 的输入，封面被导出成 `cover.<ext>`**
+  （[#13](https://github.com/Johnserf-Seed/ncm2mp3/pull/13)）：Linux 上的
+  文件名不一定是合法的 UTF-8，例如 GBK 编码的中文文件名。`cover` 子命令
+  按输入的文件名给封面命名（例如 `song.ncm` 导出为 `song.jpg`），遇到
+  这种文件名却退回成了 `cover.jpg` / `cover.png`，而音乐文件夹里可能
+  本来就有这个名字的专辑封面。一批里有好几个这样的文件时，它们会撞到
+  同一个名字：不加 `--overwrite` 时最多导出一张，其余因输出已存在被
+  跳过；加了则互相覆盖，原有的同名文件也会被覆盖。现在文件名按原始
+  字节保留：GBK 编码的 `歌.ncm` 会导出为同样是 GBK 编码的 `歌.jpg`。
+  该问题自 0.2.0 加入 `cover` 子命令起就存在。升级后重新运行一次
+  `cover`，这些封面就会按原名导出。
 - **Windows ARM64 上 `scoop install` 失败**
   （[#8](https://github.com/Johnserf-Seed/ncm2mp3/pull/8)）：Windows
   发布压缩包内有一层 `ncm2mp3-<tag>-<target>/` 目录，而 Scoop 清单的
