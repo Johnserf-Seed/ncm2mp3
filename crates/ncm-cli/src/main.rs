@@ -248,14 +248,22 @@ fn closest_name<'a>(typed: &str, candidates: &[&'a str]) -> Option<&'a str> {
 /// Minimal pre-clap scan of argv to pick up `--lang`/`-L`/`--lang=…` before
 /// building the clap command. This lets us localize `--help` itself, which
 /// clap otherwise freezes at the moment the command is constructed.
+///
+/// Reads `args_os` like clap does: `std::env::args` panics on any argument
+/// that isn't valid Unicode, such as a GBK-named file on Linux.
 fn prescan_lang() -> Option<Lang> {
-    let mut args = std::env::args().skip(1);
+    let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
+        // Not UTF-8, so it can't be one of the flags we look for.
+        let Some(arg) = arg.to_str() else {
+            continue;
+        };
         if let Some(val) = arg.strip_prefix("--lang=") {
             return Lang::parse(val);
         }
         if arg == "--lang" || arg == "-L" {
-            return args.next().and_then(|s| Lang::parse(&s));
+            // A value that isn't UTF-8 matches no language.
+            return args.next().and_then(|s| Lang::parse(s.to_str()?));
         }
     }
     None
