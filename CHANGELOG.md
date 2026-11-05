@@ -11,6 +11,13 @@
 
 ### 修复
 
+- **参数不是合法 UTF-8 时程序崩溃**：Linux 上的文件名不一定是合法的
+  UTF-8，例如 GBK 编码的文件名。只要传入一个这样的参数（比如作为输入
+  的文件或文件夹），`ncm2mp3` 就会在解析参数之前 panic，报错
+  ``called `Result::unwrap()` on an `Err` value``，退出码 101。问题出在
+  提前查找 `--lang` 的那一步（这样 `--help` 本身才能显示对应语言）：
+  它只接受 UTF-8。现在这一步会跳过非 UTF-8 的参数，后续解析照常进行。
+  该问题自 0.1.0 起就存在。
 - **Windows ARM64 上 `scoop install` 失败**
   （[#8](https://github.com/Johnserf-Seed/ncm2mp3/pull/8)）：Windows
   发布压缩包内有一层 `ncm2mp3-<tag>-<target>/` 目录，而 Scoop 清单的
