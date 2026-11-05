@@ -11,6 +11,25 @@
 
 ### 修复
 
+- **`--from-file` 列表中只要有一行不是合法 UTF-8，整个列表就无法使用**
+  （[#14](https://github.com/Johnserf-Seed/ncm2mp3/pull/14)）：Linux 上的
+  文件名可以是任意字节，例如 GBK 编码的中文文件名，而
+  `find . -name '*.ncm' > list.txt` 会把这些字节原样写进列表。列表此前
+  按 UTF-8 读取，遇到这样一行就报错 `failed to read line N of …`（原因
+  是 `stream did not contain valid UTF-8`）并中止整次运行，一个文件都
+  不会转换。现在每一行按原始字节读取，原样作为路径；首尾空白和 CRLF
+  行尾的 `\r` 照旧去掉，空行和 `#` 注释照旧忽略。Windows 的路径是
+  Unicode，所以在 Windows 上，写路径的行仍须是 UTF-8（注释行不再有此
+  要求），报错改为直接说明第几行不是 UTF-8，并提示把列表存成 UTF-8。
+  该问题自 0.2.0 加入 `--from-file` 起就存在。
+- **列表文件以 UTF-8 BOM 开头时，`--from-file` 的第一项出错**
+  （[#14](https://github.com/Johnserf-Seed/ncm2mp3/pull/14)）：很多
+  Windows 工具存成"UTF-8"时会在文件开头写一个 BOM，例如 Windows
+  PowerShell 5.1 的 `Out-File -Encoding utf8` 和旧版记事本。这个 BOM
+  之前被当成第一项的一部分：第一项是路径时，即使文件存在也会报
+  `input path does not exist`，而 BOM 显示不出来，看不出原因；第一项
+  是 `#` 注释时，它会被当成路径。两种情况都会中止整次运行。现在会
+  跳过文件开头的 BOM。该问题自 0.2.0 加入 `--from-file` 起就存在。
 - **Windows ARM64 上 `scoop install` 失败**
   （[#8](https://github.com/Johnserf-Seed/ncm2mp3/pull/8)）：Windows
   发布压缩包内有一层 `ncm2mp3-<tag>-<target>/` 目录，而 Scoop 清单的
