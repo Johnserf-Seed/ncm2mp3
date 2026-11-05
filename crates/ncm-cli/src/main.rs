@@ -3,9 +3,13 @@ mod config;
 mod cover;
 mod i18n;
 mod info;
+mod output;
 mod pipeline;
 mod tagger;
 mod template;
+mod term;
+#[cfg(test)]
+mod testutil;
 mod watch;
 
 use std::time::Duration;

@@ -1,18 +1,35 @@
 //! Write NCM metadata and cover art into the decrypted output file using
 //! lofty, which abstracts over ID3v2 / Vorbis Comment / MP4 atoms.
 
-use std::path::Path;
+use std::fs::File;
+use std::io::{BufReader, Seek};
 
 use anyhow::{Context, Result};
 use lofty::config::WriteOptions;
-use lofty::file::{AudioFile, TaggedFileExt};
+use lofty::file::{AudioFile, FileType, TaggedFileExt};
 use lofty::picture::{MimeType, Picture, PictureType};
+use lofty::probe::Probe;
 use lofty::tag::{Accessor, Tag};
-use ncm_core::{Cover, CoverMime, NcmMetadata};
+use ncm_core::{AudioFormat, Cover, CoverMime, NcmMetadata};
 
-pub fn write_tags(path: &Path, metadata: &NcmMetadata, cover: Option<&Cover>) -> Result<()> {
-    let mut tagged = lofty::read_from_path(path)
-        .with_context(|| format!("failed to read {} for tagging", path.display()))?;
+/// Tag the decrypted `format` audio in `file`, which must be open for
+/// reading and writing. Takes the open handle rather than a path, so nothing
+/// can swap the file for a symlink between decrypting and tagging it.
+pub fn write_tags(
+    file: &mut File,
+    format: AudioFormat,
+    metadata: &NcmMetadata,
+    cover: Option<&Cover>,
+) -> Result<()> {
+    // `lofty::read_from_path` picks the parser from the file extension; the
+    // extension we gave the file is `format`'s, so pick it from that.
+    let file_type = FileType::from_ext(format.extension())
+        .with_context(|| format!("can't tag .{} files", format.extension()))?;
+    file.rewind()
+        .context("failed to read the audio for tagging")?;
+    let mut tagged = Probe::with_file_type(BufReader::new(&mut *file), file_type)
+        .read()
+        .context("failed to read the audio for tagging")?;
 
     let tag_type = tagged.primary_tag_type();
     if tagged.primary_tag().is_none() {
@@ -39,8 +56,8 @@ pub fn write_tags(path: &Path, metadata: &NcmMetadata, cover: Option<&Cover>) ->
     }
 
     tagged
-        .save_to_path(path, WriteOptions::default())
-        .with_context(|| format!("failed to write tags to {}", path.display()))?;
+        .save_to(file, WriteOptions::default())
+        .context("failed to write tags")?;
 
     Ok(())
 }
