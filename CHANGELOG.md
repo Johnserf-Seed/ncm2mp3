@@ -11,6 +11,17 @@
 
 ### 修复
 
+- **文件名不是合法 UTF-8 的输入被输出成 `unknown.<ext>`**
+  （[#12](https://github.com/Johnserf-Seed/ncm2mp3/pull/12)）：Linux 上的
+  文件名不一定是合法的 UTF-8，例如 GBK 编码的中文文件名。默认命名本应
+  沿用输入的文件名，遇到这种文件名却退回成了 `unknown`（`--folder`
+  模式下的目录名也一样）。一批里有好几个这样的文件时，它们会撞到同一个
+  名字：默认的 `skip` 策略只转换出一个，其余因输出已存在被跳过；
+  `--on-conflict rename` 得到 `unknown-1.mp3` 这类名字；`--overwrite`
+  则互相覆盖。现在文件名按原始字节保留：GBK 编码的 `歌.ncm` 会输出为
+  同样是 GBK 编码的 `歌.mp3`，`rename` 也在原名后面加 `-1`、`-2`。
+  该问题自 0.1.0 起就存在。升级后重新运行即可按原名输出，之前生成的
+  `unknown.<ext>`、`unknown-1.<ext>` 等文件可以删掉。
 - **Windows ARM64 上 `scoop install` 失败**
   （[#8](https://github.com/Johnserf-Seed/ncm2mp3/pull/8)）：Windows
   发布压缩包内有一层 `ncm2mp3-<tag>-<target>/` 目录，而 Scoop 清单的
