@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Covers of input files whose names aren't valid UTF-8 were exported
+  as `cover.<ext>`** ([#13](https://github.com/Johnserf-Seed/ncm2mp3/pull/13)).
+  File names on Linux don't have to be valid UTF-8; GBK-encoded Chinese
+  names are one example. The `cover` subcommand names each cover after
+  its input (`song.ncm` gives `song.jpg`), but for such a name it fell
+  back to `cover.jpg` / `cover.png`, a name a music folder may already
+  use for its album art. Several such files in one batch all landed on
+  that one name: without `--overwrite`, at most one cover was exported
+  and the rest were skipped because the output existed; with it, they
+  overwrote each other and any file already there. The name's raw bytes
+  are now kept: a GBK-encoded `歌.ncm` exports to a GBK-encoded
+  `歌.jpg`. The bug dates back to 0.2.0, which added `cover`. After
+  upgrading, just run `cover` again to export these covers under their
+  own names.
 - **`scoop install` failed on Windows ARM64**
   ([#8](https://github.com/Johnserf-Seed/ncm2mp3/pull/8)). Each Windows
   release zip wraps its files in an `ncm2mp3-<tag>-<target>/` folder,

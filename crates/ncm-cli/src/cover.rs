@@ -6,6 +6,7 @@
 //! every `.ncm` under the tree yields one cover file written alongside it
 //! (or into `--output <dir>` if provided).
 
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -59,6 +60,21 @@ fn collect(input: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
+/// The exported cover's file name: the input's stem with `ext`
+/// (`song.ncm` -> `song.jpg`), or `cover.<ext>` if there is no stem. The
+/// stem stays an `OsStr`: on Linux a file name needn't be valid UTF-8
+/// (e.g. GBK-encoded), and converting it to `str` would fail.
+fn cover_file_name(ncm_path: &Path, ext: &str) -> OsString {
+    let stem = ncm_path
+        .file_stem()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(OsStr::new("cover"));
+    let mut name = stem.to_os_string();
+    name.push(".");
+    name.push(ext);
+    name
+}
+
 fn extract_one(ncm_path: &Path, args: &CoverArgs) -> Result<()> {
     // `NcmDecoder::open` parses the preamble including the cover segment —
     // we discard the decoder (audio stream untouched).
@@ -90,12 +106,6 @@ fn extract_one(ncm_path: &Path, args: &CoverArgs) -> Result<()> {
     };
 
     // Destination: <output dir or input's parent> / <input stem>.<ext>
-    let stem = ncm_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("cover");
-
     let parent = match &args.output {
         Some(dir) => dir.clone(),
         None => ncm_path
@@ -106,7 +116,7 @@ fn extract_one(ncm_path: &Path, args: &CoverArgs) -> Result<()> {
     fs::create_dir_all(&parent)
         .with_context(|| format!("failed to create {}", parent.display()))?;
 
-    let out_path = parent.join(format!("{stem}.{ext}"));
+    let out_path = parent.join(cover_file_name(ncm_path, ext));
     if out_path.exists() && !args.overwrite {
         eprintln!(
             "{} {}  ({})",
@@ -128,4 +138,36 @@ fn extract_one(ncm_path: &Path, args: &CoverArgs) -> Result<()> {
             .replace("{path}", &out_path.display().to_string())
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[cfg(unix)]
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn cover_file_name_swaps_only_the_extension() {
+        let name = cover_file_name(Path::new("/in/song.ncm"), "jpg");
+        assert_eq!(name, "song.jpg");
+        let name = cover_file_name(Path::new("/in/artist - song . live.ncm"), "png");
+        assert_eq!(name, "artist - song . live.png");
+    }
+
+    #[test]
+    fn cover_file_name_falls_back_to_cover_without_a_file_name() {
+        assert_eq!(cover_file_name(Path::new("/in/.."), "jpg"), "cover.jpg");
+    }
+
+    // A Linux file name needn't be valid UTF-8: `\xb8\xe8` is "歌" in GBK.
+    // Such names used to fall back to `cover.<ext>`, so a batch of them
+    // collided. macOS refuses them on disk, so this only builds paths and
+    // never creates the files.
+    #[cfg(unix)]
+    #[test]
+    fn cover_file_name_keeps_non_utf8_stem() {
+        let input = Path::new(OsStr::from_bytes(b"/in/\xb8\xe8.ncm"));
+        assert_eq!(cover_file_name(input, "jpg").as_bytes(), b"\xb8\xe8.jpg");
+        assert_eq!(cover_file_name(input, "png").as_bytes(), b"\xb8\xe8.png");
+    }
 }
