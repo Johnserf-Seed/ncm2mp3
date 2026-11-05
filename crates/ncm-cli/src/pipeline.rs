@@ -195,7 +195,8 @@ fn collect_from_path(input: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
 }
 
 /// Read a text file as a newline-separated list of paths. Blank lines and
-/// `#`-prefixed comments are ignored. Whitespace is trimmed.
+/// `#`-prefixed comments are ignored. Whitespace is trimmed, and so is a
+/// UTF-8 byte order mark at the start of the file.
 ///
 /// The list is read as bytes, not as UTF-8, since a Unix file name can be
 /// any bytes: `find . -name '*.ncm' > list.txt` writes a GBK-encoded
@@ -211,7 +212,14 @@ fn read_file_list(list_path: &Path) -> Result<Vec<PathBuf>> {
         let line = line.with_context(|| {
             format!("failed to read line {} of {}", idx + 1, list_path.display())
         })?;
-        let entry = match std::str::from_utf8(&line) {
+        // Many Windows tools start a file saved as "UTF-8" with a BOM
+        // (Windows PowerShell's `Out-File -Encoding utf8`, older Notepad).
+        // It's not part of the first entry, and would hide a `#` there.
+        let line = match line.strip_prefix(b"\xef\xbb\xbf") {
+            Some(rest) if idx == 0 => rest,
+            _ => &line[..],
+        };
+        let entry = match std::str::from_utf8(line) {
             // Trimmed exactly as before, so a list that worked still does.
             Ok(text) => text.trim().as_bytes(),
             // Without knowing the encoding, only ASCII whitespace (the `\r`
@@ -688,6 +696,25 @@ song2.ncm
         std::fs::write(&p, "\u{3000}歌.ncm\u{3000}\n\u{3000}# 注释\n\u{3000}\n").unwrap();
         let v = read_file_list(&p).unwrap();
         assert_eq!(v, vec![PathBuf::from("歌.ncm")]);
+    }
+
+    #[test]
+    fn read_file_list_skips_a_utf8_bom() {
+        // What Windows PowerShell's `Out-File -Encoding utf8` writes: a BOM,
+        // then CRLF lines. The BOM must neither stick to the first path nor
+        // hide a comment.
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("list.txt");
+        std::fs::write(&p, "\u{feff}song1.ncm\r\nsong2.ncm\r\n").unwrap();
+        assert_eq!(
+            read_file_list(&p).unwrap(),
+            vec![PathBuf::from("song1.ncm"), PathBuf::from("song2.ncm")]
+        );
+        std::fs::write(&p, "\u{feff}# list\r\nsong1.ncm\r\n").unwrap();
+        assert_eq!(
+            read_file_list(&p).unwrap(),
+            vec![PathBuf::from("song1.ncm")]
+        );
     }
 
     // `\xb8\xe8` is "歌" in GBK. A Linux file name may well be that, and
