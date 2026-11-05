@@ -19,8 +19,9 @@ impl NcmStreamCipher {
     ///
     /// # Panics
     ///
-    /// Panics if `key` is empty. Callers that parsed the key out of an NCM
-    /// file should already have non-empty key material; empty is a
+    /// Panics if `key` is empty. Keys from
+    /// [`read_rc4_key`](crate::parser::read_rc4_key) never are (it rejects
+    /// key blobs with nothing after the prefix), so an empty key here is a
     /// programmer error, not a data error.
     pub fn new(key: &[u8]) -> Self {
         assert!(!key.is_empty(), "NCM stream key must be non-empty");

@@ -14,7 +14,7 @@ use ncm2mp3_core::format::{
     AudioFormat, CORE_KEY, KEY_PREFIX, KEY_XOR_MASK, MAGIC, META_KEY, META_PLAIN_PREFIX,
     META_PREFIX, META_XOR_MASK,
 };
-use ncm2mp3_core::NcmDecoder;
+use ncm2mp3_core::{NcmDecoder, NcmError};
 
 type Aes128EcbEnc = Encryptor<Aes128>;
 
@@ -193,6 +193,25 @@ fn roundtrip_client_v3_layout() {
     let mut out = Vec::new();
     decoder.decode_to_writer(&mut out).unwrap();
     assert_eq!(out, audio);
+}
+
+#[test]
+fn key_blob_holding_only_the_prefix_is_an_error_not_a_panic() {
+    // The stream cipher can't be keyed with zero bytes; this used to reach
+    // its assertion and abort the process.
+    let mut key_segment = aes_encrypt(&CORE_KEY, KEY_PREFIX);
+    for byte in &mut key_segment {
+        *byte ^= KEY_XOR_MASK;
+    }
+    let mut ncm = MAGIC.to_vec();
+    ncm.extend_from_slice(&[0, 0]); // gap
+    ncm.extend_from_slice(&(key_segment.len() as u32).to_le_bytes());
+    ncm.extend_from_slice(&key_segment);
+
+    assert!(matches!(
+        NcmDecoder::from_reader(Cursor::new(ncm)),
+        Err(NcmError::InvalidKeyPrefix)
+    ));
 }
 
 #[test]
