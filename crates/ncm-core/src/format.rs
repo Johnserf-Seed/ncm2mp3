@@ -28,9 +28,21 @@ pub const META_PREFIX: &[u8] = b"music:";
 /// segment, visible only after XORing the segment with [`META_XOR_MASK`].
 pub const META_PLAIN_PREFIX: &[u8] = b"163 key(Don't modify):";
 
-/// Reject any length field larger than 64 MiB. Legit keys and metadata are
-/// only a few kilobytes; covers are at most a few MiB. Anything larger is
-/// either a corrupt file or an attacker-controlled length field.
+/// Largest RC4-key segment the parser accepts. Real key blobs are 128 bytes
+/// (older clients) or 144 bytes (NetEase Cloud Music 3.x), so this leaves
+/// plenty of room for format changes while keeping a crafted length field
+/// from costing more than a trivial allocation.
+pub const MAX_KEY_LEN: u32 = 64 * 1024;
+
+/// Largest metadata segment the parser accepts. Real ones are a few
+/// kilobytes of base64-encoded JSON; the decoding steps briefly hold a few
+/// copies of the segment, so the cap bounds that too.
+pub const MAX_META_LEN: u32 = 1024 * 1024;
+
+/// Largest cover image and cover frame the parser accepts. Covers are at
+/// most a few MiB in practice; anything larger is either a corrupt file or
+/// an attacker-controlled length field. (The key and metadata segments have
+/// their own, much smaller caps: [`MAX_KEY_LEN`] and [`MAX_META_LEN`].)
 pub const MAX_SEGMENT_LEN: u32 = 64 * 1024 * 1024;
 
 /// Recommended read chunk size for streaming the audio segment.

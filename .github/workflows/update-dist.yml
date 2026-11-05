@@ -52,22 +52,30 @@ jobs:
 
       - name: Resolve tag + version
         id: ver
+        env:
+          # Hand the ref name / dispatch input to the script as data. Spliced
+          # in with `${{ }}`, its text would become part of the script, and
+          # characters like `$(...)` or `;` would run as shell code.
+          RAW_TAG: ${{ github.event.workflow_run.head_branch || inputs.tag }}
         run: |
-          TAG="${{ github.event.workflow_run.head_branch || inputs.tag }}"
-          if [[ -z "$TAG" ]]; then
-            echo "no tag provided"; exit 1
+          # Accept release tags only (v1.2.3, v1.2.3-rc.1). The tag goes on
+          # into download URLs, the PR branch name and the PR text.
+          re='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if [[ ! "$RAW_TAG" =~ $re ]]; then
+            echo "::error::not a release tag; expected vX.Y.Z or vX.Y.Z-suffix"
+            exit 1
           fi
-          VERSION="${TAG#v}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$RAW_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${RAW_TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch SHA256s from release assets
         id: hashes
         shell: bash
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.ver.outputs.tag }}"
-          BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}/ncm2mp3-${TAG}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/ncm2mp3-${TAG}"
 
           # Pull each .sha256 file (emitted by release.yml as of v0.4+). If
           # any fetch returns empty, fail loudly — missing hashes would

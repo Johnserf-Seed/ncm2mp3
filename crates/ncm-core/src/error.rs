@@ -24,8 +24,9 @@ pub enum NcmError {
     #[error("unexpected end of file while reading {0}")]
     UnexpectedEof(&'static str),
 
-    /// AES-decrypted RC4-key blob didn't start with `neteasecloudmusic`.
-    #[error("RC4 key missing 'neteasecloudmusic' prefix")]
+    /// AES-decrypted RC4-key blob didn't start with `neteasecloudmusic`, or
+    /// held nothing after it (the stream cipher needs at least one key byte).
+    #[error("invalid RC4 key blob (expected 'neteasecloudmusic' followed by the key)")]
     InvalidKeyPrefix,
 
     /// XOR-deobfuscated metadata segment didn't start with the expected
@@ -39,10 +40,12 @@ pub enum NcmError {
     #[error("metadata missing 'music:' prefix")]
     InvalidMetaPrefix,
 
-    /// A segment's declared length field exceeds
-    /// [`format::MAX_SEGMENT_LEN`](crate::format::MAX_SEGMENT_LEN). Thrown as
-    /// a defensive check against attacker-controlled or corrupt length fields
-    /// that would otherwise request a multi-gigabyte allocation.
+    /// A segment's declared length field exceeds that segment's cap:
+    /// [`MAX_KEY_LEN`](crate::format::MAX_KEY_LEN),
+    /// [`MAX_META_LEN`](crate::format::MAX_META_LEN) or
+    /// [`MAX_SEGMENT_LEN`](crate::format::MAX_SEGMENT_LEN). Thrown as a
+    /// defensive check against attacker-controlled or corrupt length fields
+    /// that would otherwise request a huge allocation.
     #[error("declared length {declared} exceeds sane limit ({limit})")]
     LengthTooLarge {
         /// The length value read from the file.

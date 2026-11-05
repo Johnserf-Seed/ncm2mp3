@@ -14,6 +14,7 @@ use walkdir::WalkDir;
 use crate::cli::InfoArgs;
 use crate::i18n::t;
 use crate::pipeline::has_ncm_extension;
+use crate::term::{printable, printable_path};
 
 pub fn run(args: &InfoArgs) -> Result<()> {
     let files = collect(&args.input, args.recursive)?;
@@ -33,7 +34,12 @@ pub fn run(args: &InfoArgs) -> Result<()> {
         }
         match print_one(path) {
             Ok(()) => {}
-            Err(e) => eprintln!("{} {}: {e:#}", style("✗").red().bold(), path.display()),
+            Err(e) => eprintln!(
+                "{} {}: {}",
+                style("✗").red().bold(),
+                printable_path(path),
+                printable(&format!("{e:#}"))
+            ),
         }
     }
 
@@ -68,9 +74,16 @@ fn print_one(path: &Path) -> Result<()> {
 
     let file_size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     for (label, value) in build_rows(path, file_size, &headers) {
-        println!("{}: {}", style(label).bold().cyan(), value);
+        println!("{}", render_row(label, &value));
     }
     Ok(())
+}
+
+/// One `label: value` line. Values carry the file's own text (title,
+/// artist, album) and its path, so their control characters are escaped
+/// rather than handed to the terminal.
+fn render_row(label: &str, value: &str) -> String {
+    format!("{}: {}", style(label).bold().cyan(), printable(value))
 }
 
 fn build_rows(path: &Path, file_size: u64, headers: &NcmHeaders) -> Vec<(&'static str, String)> {
@@ -222,6 +235,40 @@ mod tests {
             format_detected_format(AudioFormat::Unknown, AudioFormat::Mp3),
             "unknown (declared: MP3)"
         );
+    }
+
+    #[test]
+    fn metadata_is_printed_without_its_control_characters() {
+        // OSC 52 would set the clipboard; the newline would fake a row.
+        let headers = NcmHeaders {
+            metadata: ncm_core::NcmMetadata {
+                title: "Song\u{1b}]52;c;ZXZpbA==\u{7}".into(),
+                artists: vec!["A\u{1b}[2J".into()],
+                album: "B\nTitle: fake".into(),
+                declared_format: AudioFormat::Mp3,
+                bitrate: None,
+                duration: None,
+                album_pic_url: None,
+            },
+            cover: None,
+            detected_format: AudioFormat::Mp3,
+        };
+        let rendered: Vec<(&str, String)> = build_rows(Path::new("x.ncm"), 0, &headers)
+            .into_iter()
+            .map(|(label, value)| (label, render_row(label, &value)))
+            .collect();
+        let row = |label: &str| {
+            rendered
+                .iter()
+                .find(|(l, _)| *l == label)
+                .map(|(_, line)| line.clone())
+                .unwrap()
+        };
+
+        let s = t();
+        assert!(row(s.info_title).ends_with(": Song\\u{1b}]52;c;ZXZpbA==\\u{7}"));
+        assert!(row(s.info_artist).ends_with(": A\\u{1b}[2J"));
+        assert!(row(s.info_album).ends_with(": B\\u{a}Title: fake"));
     }
 
     #[test]

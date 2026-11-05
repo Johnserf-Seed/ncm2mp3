@@ -13,10 +13,15 @@ use base64::Engine;
 use crate::crypto::{aes128_ecb_decrypt, NcmStreamCipher};
 use crate::error::{NcmError, Result};
 use crate::format::{
-    is_ncm_magic, CoverMime, CORE_KEY, KEY_PREFIX, KEY_XOR_MASK, MAGIC, MAX_SEGMENT_LEN, META_KEY,
-    META_PLAIN_PREFIX, META_PREFIX, META_XOR_MASK,
+    is_ncm_magic, CoverMime, CORE_KEY, KEY_PREFIX, KEY_XOR_MASK, MAGIC, MAX_KEY_LEN, MAX_META_LEN,
+    MAX_SEGMENT_LEN, META_KEY, META_PLAIN_PREFIX, META_PREFIX, META_XOR_MASK,
 };
 use crate::metadata::{NcmMetadata, RawMetadata};
+
+/// How much of a segment's declared length is reserved before reading it.
+/// Key and metadata segments fit whole; a larger segment's buffer grows only
+/// as its bytes actually arrive.
+const PREALLOC_LIMIT: usize = 64 * 1024;
 
 /// Read and verify the 8-byte magic (`CTENFDAM`) + 2-byte gap at the start
 /// of the file. Errors with [`NcmError::InvalidMagic`] on mismatch.
@@ -43,37 +48,48 @@ fn read_u32_le<R: Read>(reader: &mut R, field: &'static str) -> Result<u32> {
     Ok(u32::from_le_bytes(buf))
 }
 
-fn read_segment<R: Read>(reader: &mut R, len: u32, field: &'static str) -> Result<Vec<u8>> {
-    if len > MAX_SEGMENT_LEN {
+fn read_segment<R: Read>(
+    reader: &mut R,
+    len: u32,
+    limit: u32,
+    field: &'static str,
+) -> Result<Vec<u8>> {
+    if len > limit {
         return Err(NcmError::LengthTooLarge {
             declared: len as u64,
-            limit: MAX_SEGMENT_LEN as u64,
+            limit: limit as u64,
         });
     }
-    let mut buf = vec![0u8; len as usize];
-    reader
-        .read_exact(&mut buf)
-        .map_err(|_| NcmError::UnexpectedEof(field))?;
+    // The length field is just a claim: allocating all of it up front would
+    // let a few-byte file reserve the full cap. Grow the buffer as bytes
+    // arrive instead, so a truncated segment costs only what it holds.
+    let mut buf = Vec::with_capacity((len as usize).min(PREALLOC_LIMIT));
+    reader.by_ref().take(u64::from(len)).read_to_end(&mut buf)?;
+    if buf.len() < len as usize {
+        return Err(NcmError::UnexpectedEof(field));
+    }
     Ok(buf)
 }
 
 /// Read and decode the RC4 key segment, returning the key bytes used to
-/// initialize the audio stream cipher.
+/// initialize the audio stream cipher. The returned key is never empty.
 pub fn read_rc4_key<R: Read>(reader: &mut R) -> Result<Vec<u8>> {
     let len = read_u32_le(reader, "rc4 key length")?;
-    let mut blob = read_segment(reader, len, "rc4 key")?;
+    let mut blob = read_segment(reader, len, MAX_KEY_LEN, "rc4 key")?;
 
     for byte in &mut blob {
         *byte ^= KEY_XOR_MASK;
     }
 
-    let decrypted = aes128_ecb_decrypt(&CORE_KEY, &blob)?;
+    let mut key = aes128_ecb_decrypt(&CORE_KEY, &blob)?;
 
-    if !decrypted.starts_with(KEY_PREFIX) {
+    // A blob holding only the prefix leaves no key, and `NcmStreamCipher`
+    // can't be keyed with zero bytes; reject it here rather than panic there.
+    if key.len() <= KEY_PREFIX.len() || !key.starts_with(KEY_PREFIX) {
         return Err(NcmError::InvalidKeyPrefix);
     }
-
-    Ok(decrypted[KEY_PREFIX.len()..].to_vec())
+    key.drain(..KEY_PREFIX.len());
+    Ok(key)
 }
 
 /// Read and decode the metadata JSON segment. Empty metadata (length zero) is
@@ -93,7 +109,7 @@ pub fn read_metadata<R: Read>(reader: &mut R) -> Result<NcmMetadata> {
         }));
     }
 
-    let mut blob = read_segment(reader, len, "metadata")?;
+    let mut blob = read_segment(reader, len, MAX_META_LEN, "metadata")?;
 
     for byte in &mut blob {
         *byte ^= META_XOR_MASK;
@@ -200,7 +216,7 @@ fn read_image<R: Read>(reader: &mut R, len: u32) -> Result<Option<Cover>> {
     if len == 0 {
         return Ok(None);
     }
-    let data = read_segment(reader, len, "cover")?;
+    let data = read_segment(reader, len, MAX_SEGMENT_LEN, "cover")?;
     let mime = CoverMime::detect(&data);
     Ok(Some(Cover { mime, data }))
 }
@@ -234,13 +250,92 @@ mod tests {
         assert!(read_and_verify_magic(&mut cur).is_ok());
     }
 
+    /// A length-prefixed key segment whose AES plaintext is `plain`.
+    fn key_segment(plain: &[u8]) -> Cursor<Vec<u8>> {
+        use aes::Aes128;
+        use cipher::{block_padding::Pkcs7, BlockModeEncrypt, KeyInit};
+
+        let mut blob =
+            ecb::Encryptor::<Aes128>::new((&CORE_KEY).into()).encrypt_padded_vec::<Pkcs7>(plain);
+        for byte in &mut blob {
+            *byte ^= KEY_XOR_MASK;
+        }
+        let mut bytes = (blob.len() as u32).to_le_bytes().to_vec();
+        bytes.extend_from_slice(&blob);
+        Cursor::new(bytes)
+    }
+
     #[test]
-    fn rejects_oversized_segment() {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&(MAX_SEGMENT_LEN + 1).to_le_bytes());
-        let mut cur = Cursor::new(bytes);
-        let result = read_rc4_key(&mut cur);
-        assert!(matches!(result, Err(NcmError::LengthTooLarge { .. })));
+    fn rc4_key_is_what_follows_the_prefix() {
+        let mut plain = KEY_PREFIX.to_vec();
+        plain.extend_from_slice(b"key-material");
+        assert_eq!(
+            read_rc4_key(&mut key_segment(&plain)).unwrap(),
+            b"key-material"
+        );
+    }
+
+    #[test]
+    fn rc4_key_rejects_blob_holding_only_the_prefix() {
+        // Used to come back as an empty key, which panicked (and, with
+        // `panic = "abort"`, killed the whole process) in NcmStreamCipher.
+        assert!(matches!(
+            read_rc4_key(&mut key_segment(KEY_PREFIX)),
+            Err(NcmError::InvalidKeyPrefix)
+        ));
+    }
+
+    #[test]
+    fn rc4_key_rejects_blob_without_prefix() {
+        assert!(matches!(
+            read_rc4_key(&mut key_segment(b"not-the-prefix-at-all")),
+            Err(NcmError::InvalidKeyPrefix)
+        ));
+    }
+
+    /// A length field with nothing after it.
+    fn length_only(len: u32) -> Cursor<Vec<u8>> {
+        Cursor::new(len.to_le_bytes().to_vec())
+    }
+
+    #[test]
+    fn rc4_key_rejects_length_over_its_cap() {
+        let result = read_rc4_key(&mut length_only(MAX_KEY_LEN + 1));
+        assert!(matches!(
+            result,
+            Err(NcmError::LengthTooLarge { limit, .. }) if limit == MAX_KEY_LEN as u64
+        ));
+    }
+
+    #[test]
+    fn metadata_rejects_length_over_its_cap() {
+        let result = read_metadata(&mut length_only(MAX_META_LEN + 1));
+        assert!(matches!(
+            result,
+            Err(NcmError::LengthTooLarge { limit, .. }) if limit == MAX_META_LEN as u64
+        ));
+    }
+
+    #[test]
+    fn truncated_rc4_key_errors() {
+        let mut bytes = 144u32.to_le_bytes().to_vec();
+        bytes.extend_from_slice(&[0u8; 10]);
+        assert!(matches!(
+            read_rc4_key(&mut Cursor::new(bytes)),
+            Err(NcmError::UnexpectedEof("rc4 key"))
+        ));
+    }
+
+    #[test]
+    fn cover_claiming_more_than_the_file_holds_errors() {
+        // A cover length at the cap, followed by four bytes and EOF.
+        let mut bytes = MAX_SEGMENT_LEN.to_le_bytes().to_vec();
+        bytes.extend_from_slice(&MAX_SEGMENT_LEN.to_le_bytes());
+        bytes.extend_from_slice(&JPEG_HEAD);
+        assert!(matches!(
+            read_cover_frame(&mut Cursor::new(bytes)),
+            Err(NcmError::UnexpectedEof("cover"))
+        ));
     }
 
     const JPEG_HEAD: [u8; 4] = [0xFF, 0xD8, 0xFF, 0xE0];

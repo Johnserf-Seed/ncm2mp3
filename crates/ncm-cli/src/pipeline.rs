@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, BufWriter};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -19,6 +19,8 @@ use walkdir::WalkDir;
 
 use crate::cli::{Cli, ConflictStrategy};
 use crate::i18n::t;
+use crate::output::OutputFile;
+use crate::term::{printable, printable_path};
 use crate::{tagger, template};
 
 /// Final per-run tallies surfaced to `main.rs` for the summary line.
@@ -79,26 +81,36 @@ pub fn run(args: &Cli) -> Result<RunSummary> {
                     eprintln!(
                         "{} {} -> {}",
                         style("✓").green().bold(),
-                        input.display(),
-                        path.display()
+                        printable_path(input),
+                        printable_path(&path)
                     );
                 }
                 Ok(Outcome::Skipped(reason)) => {
                     skipped.fetch_add(1, Ordering::Relaxed);
-                    eprintln!("{} {}  ({reason})", style("·").yellow(), input.display());
+                    eprintln!(
+                        "{} {}  ({})",
+                        style("·").yellow(),
+                        printable_path(input),
+                        printable(&reason)
+                    );
                 }
                 Ok(Outcome::DryRun(path)) => {
                     ok.fetch_add(1, Ordering::Relaxed);
                     eprintln!(
                         "{} {} -> {}",
                         style(t().msg_dry_run_prefix).cyan(),
-                        input.display(),
-                        path.display()
+                        printable_path(input),
+                        printable_path(&path)
                     );
                 }
                 Err(e) => {
                     failed.fetch_add(1, Ordering::Relaxed);
-                    eprintln!("{} {}: {e:#}", style("✗").red().bold(), input.display());
+                    eprintln!(
+                        "{} {}: {}",
+                        style("✗").red().bold(),
+                        printable_path(input),
+                        printable(&format!("{e:#}"))
+                    );
                 }
             });
     });
@@ -259,53 +271,65 @@ pub(crate) fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
 
     let planned = build_output_path(input, args, &headers, format)?;
 
-    // Resolve conflict strategy to a concrete target path — or bail out as
-    // a "skipped" Outcome when policy says to leave the existing file alone.
-    let out_path = match resolve_conflict(&planned, args.on_conflict)? {
-        ConflictOutcome::Write(p) => p,
-        ConflictOutcome::Skip => {
-            return Ok(Outcome::Skipped(
-                t().msg_skipped_exists
-                    .replace("{path}", &planned.display().to_string())
-                    .to_string(),
-            ));
-        }
-    };
-
     if args.dry_run {
-        return Ok(Outcome::DryRun(out_path));
+        return Ok(match resolve_conflict(&planned, args.on_conflict)? {
+            ConflictOutcome::Write(path) => Outcome::DryRun(path),
+            ConflictOutcome::Skip => skipped_exists(&planned),
+        });
     }
 
-    if let Some(parent) = out_path.parent() {
+    if let Some(parent) = planned.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
 
+    // Claim the output name and open it in one step (see `output`): checking
+    // first and creating later would let a symlink planted at that name, or
+    // a parallel worker heading for the same name, slip in between.
+    let Some(mut output) = open_output(&planned, args.on_conflict)? else {
+        return Ok(skipped_exists(&planned));
+    };
+    let out_path = output.path().to_path_buf();
+
     {
-        let file = File::create(&out_path)
-            .with_context(|| format!("failed to create {}", out_path.display()))?;
-        let mut writer = BufWriter::with_capacity(64 * 1024, file);
+        let mut writer = BufWriter::with_capacity(64 * 1024, output.file());
         decoder
             .decode_to_writer(&mut writer)
             .with_context(|| format!("failed to decrypt {}", input.display()))?;
+        // Flush here: on drop, a failed final write would go unreported.
+        writer
+            .flush()
+            .with_context(|| format!("failed to write {}", out_path.display()))?;
     }
 
     if !args.no_tag {
-        if let Err(e) = tagger::write_tags(&out_path, &headers.metadata, headers.cover.as_ref()) {
+        let tagged = tagger::write_tags(
+            output.file(),
+            format,
+            &headers.metadata,
+            headers.cover.as_ref(),
+        );
+        if let Err(e) = tagged {
             log::warn!(
-                "{}: {e:#}",
+                "{}: {}",
                 t().msg_tagging_failed
-                    .replace("{path}", &out_path.display().to_string())
+                    .replace("{path}", &printable_path(&out_path)),
+                printable(&format!("{e:#}"))
             );
         }
     }
+
+    output
+        .commit()
+        .with_context(|| format!("failed to write {}", out_path.display()))?;
 
     if args.folder {
         if let Some(cover) = headers.cover.as_ref() {
             if let Err(e) = write_cover_next_to(&out_path, cover) {
                 log::warn!(
-                    "failed to write external cover next to {}: {e:#}",
-                    out_path.display()
+                    "failed to write external cover next to {}: {}",
+                    printable_path(&out_path),
+                    printable(&format!("{e:#}"))
                 );
             }
         }
@@ -317,6 +341,37 @@ pub(crate) fn process_one(input: &Path, args: &Cli) -> Result<Outcome> {
     })
 }
 
+fn skipped_exists(planned: &Path) -> Outcome {
+    Outcome::Skipped(
+        t().msg_skipped_exists
+            .replace("{path}", &planned.display().to_string()),
+    )
+}
+
+/// Create the output file for `planned` as the user's [`ConflictStrategy`]
+/// says. `Ok(None)` means skip this input: the name is taken.
+fn open_output(planned: &Path, strategy: ConflictStrategy) -> Result<Option<OutputFile>> {
+    let create_new = |path: &Path| {
+        OutputFile::create_new(path).with_context(|| format!("failed to create {}", path.display()))
+    };
+    match strategy {
+        ConflictStrategy::Skip => create_new(planned),
+        ConflictStrategy::Overwrite => OutputFile::replace(planned)
+            .map(Some)
+            .with_context(|| format!("failed to create {}", planned.display())),
+        ConflictStrategy::Rename => {
+            for candidate in
+                std::iter::once(planned.to_path_buf()).chain(rename_candidates(planned))
+            {
+                if let Some(output) = create_new(&candidate)? {
+                    return Ok(Some(output));
+                }
+            }
+            Err(rename_exhausted(planned))
+        }
+    }
+}
+
 enum ConflictOutcome {
     /// Write to this (possibly-renamed) path.
     Write(PathBuf),
@@ -324,47 +379,57 @@ enum ConflictOutcome {
     Skip,
 }
 
-/// Apply the user's [`ConflictStrategy`] to a planned output path.
+/// Predict where the user's [`ConflictStrategy`] would put `planned`, for
+/// `--dry-run`. A real run doesn't use this: [`open_output`] claims the
+/// name and creates the file in one step instead.
 fn resolve_conflict(planned: &Path, strategy: ConflictStrategy) -> Result<ConflictOutcome> {
-    if !planned.exists() {
+    if !is_taken(planned) {
         return Ok(ConflictOutcome::Write(planned.to_path_buf()));
     }
     match strategy {
         ConflictStrategy::Skip => Ok(ConflictOutcome::Skip),
         ConflictStrategy::Overwrite => Ok(ConflictOutcome::Write(planned.to_path_buf())),
-        ConflictStrategy::Rename => find_free_rename(planned),
+        ConflictStrategy::Rename => rename_candidates(planned)
+            .find(|candidate| !is_taken(candidate))
+            .map(ConflictOutcome::Write)
+            .ok_or_else(|| rename_exhausted(planned)),
     }
 }
 
-/// Probe `foo-1.ext`, `foo-2.ext`, … up to a reasonable ceiling.
-fn find_free_rename(planned: &Path) -> Result<ConflictOutcome> {
+/// Whether anything is at `path`, a dangling symlink included: the same
+/// test [`OutputFile::create_new`] applies.
+fn is_taken(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok()
+}
+
+/// `foo-1.ext`, `foo-2.ext`, … up to a reasonable ceiling: the names
+/// `--on-conflict rename` tries after `foo.ext` itself.
+fn rename_candidates(planned: &Path) -> impl Iterator<Item = PathBuf> + '_ {
     let parent = planned.parent().unwrap_or_else(|| Path::new(""));
     let stem = planned
         .file_stem()
         .and_then(OsStr::to_str)
         .unwrap_or("output");
     let ext = planned.extension().and_then(OsStr::to_str).unwrap_or("");
-
-    for n in 1..=9999u32 {
-        let candidate = if ext.is_empty() {
+    (1..=9999u32).map(move |n| {
+        if ext.is_empty() {
             parent.join(format!("{stem}-{n}"))
         } else {
             parent.join(format!("{stem}-{n}.{ext}"))
-        };
-        if !candidate.exists() {
-            return Ok(ConflictOutcome::Write(candidate));
         }
-    }
-    Err(anyhow!(
+    })
+}
+
+fn rename_exhausted(planned: &Path) -> anyhow::Error {
+    anyhow!(
         "{}",
         t().err_rename_exhausted
             .replace("{path}", &planned.display().to_string())
-    ))
+    )
 }
 
 /// Write a `Cover` as `cover.jpg` / `cover.png` in the same directory as
-/// `audio_path`. Exposed as `pub(crate)` so `cover.rs` can reuse the same
-/// extension logic.
+/// `audio_path`, replacing any cover already there.
 pub(crate) fn write_cover_next_to(audio_path: &Path, cover: &Cover) -> Result<()> {
     let ext = match cover.mime {
         CoverMime::Jpeg => "jpg",
@@ -375,7 +440,10 @@ pub(crate) fn write_cover_next_to(audio_path: &Path, cover: &Cover) -> Result<()
         .parent()
         .ok_or_else(|| anyhow!("audio output has no parent directory"))?;
     let cover_path = parent.join(format!("cover.{ext}"));
-    fs::write(&cover_path, &cover.data)
+    // Replace rather than write in place, so a symlink planted at
+    // `cover.jpg` gets swapped out instead of written through.
+    OutputFile::replace(&cover_path)
+        .and_then(|output| output.write_and_commit(&cover.data))
         .with_context(|| format!("failed to write {}", cover_path.display()))?;
     Ok(())
 }
@@ -832,43 +900,16 @@ song2.ncm
 
     // ---- process_one -----------------------------------------------------
 
-    /// Write a minimal NCM: real key segment, no metadata, an empty cover
-    /// frame, and `audio` under the NCM stream cipher.
-    fn write_ncm(path: &Path, audio: &[u8]) {
-        use aes::Aes128;
-        use cipher::{block_padding::Pkcs7, BlockModeEncrypt, KeyInit};
-        use ncm_core::crypto::NcmStreamCipher;
-        use ncm_core::format::{CORE_KEY, KEY_PREFIX, KEY_XOR_MASK, MAGIC};
+    use crate::testutil::write_ncm;
 
-        let rc4_key = b"pipeline-test-key";
-        let mut key_plain = KEY_PREFIX.to_vec();
-        key_plain.extend_from_slice(rc4_key);
-        let mut key_segment = ecb::Encryptor::<Aes128>::new((&CORE_KEY).into())
-            .encrypt_padded_vec::<Pkcs7>(&key_plain);
-        for byte in &mut key_segment {
-            *byte ^= KEY_XOR_MASK;
-        }
-
-        let mut audio_enc = audio.to_vec();
-        NcmStreamCipher::new(rc4_key).apply(&mut audio_enc, 0);
-
-        let mut ncm = MAGIC.to_vec();
-        ncm.extend_from_slice(&[0, 0]); // gap
-        ncm.extend_from_slice(&(key_segment.len() as u32).to_le_bytes());
-        ncm.extend_from_slice(&key_segment);
-        ncm.extend_from_slice(&0u32.to_le_bytes()); // no metadata
-        ncm.extend_from_slice(&[0u8; 5]); // crc32 + image version
-        ncm.extend_from_slice(&[0u8; 8]); // cover frame length + image length
-        ncm.extend_from_slice(&audio_enc);
-        std::fs::write(path, ncm).unwrap();
-    }
+    const MP3: &[u8] = b"ID3\x04\x00\x00\x00\x00\x00\x00 some frames";
 
     #[test]
     fn process_one_writes_decrypted_audio_keeping_dotted_name() {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("artist - song name . xxx.ncm");
-        let audio = b"ID3\x04\x00\x00\x00\x00\x00\x00 some frames";
-        write_ncm(&input, audio);
+        let audio = MP3;
+        write_ncm(&input, audio, None);
         let mut args = cli_default();
         args.no_tag = true;
 
@@ -888,7 +929,11 @@ song2.ncm
         // counted as a success.
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("noise.ncm");
-        write_ncm(&input, &[0x0b, 0x86, 0x8c, 0xed, 0x8e, 0x3a, 0x75, 0x45]);
+        write_ncm(
+            &input,
+            &[0x0b, 0x86, 0x8c, 0xed, 0x8e, 0x3a, 0x75, 0x45],
+            None,
+        );
         let out_dir = dir.path().join("out");
         let mut args = cli_default();
         args.output = Some(out_dir.clone());
@@ -898,6 +943,201 @@ song2.ncm
             .expect("unrecognized audio must be an error");
         assert_eq!(err.to_string(), t().err_unrecognized_audio);
         assert!(!out_dir.exists(), "nothing should be written");
+    }
+
+    /// `song.ncm` in a temp dir, with `audio` inside, plus args that write
+    /// to `<dir>/out` under `strategy`, untagged.
+    fn song_and_args(
+        audio: &[u8],
+        strategy: ConflictStrategy,
+    ) -> (tempfile::TempDir, PathBuf, PathBuf, Cli) {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("song.ncm");
+        write_ncm(&input, audio, None);
+        let out_dir = dir.path().join("out");
+        std::fs::create_dir(&out_dir).unwrap();
+        let mut args = cli_default();
+        args.output = Some(out_dir.clone());
+        args.on_conflict = strategy;
+        args.no_tag = true;
+        (dir, input, out_dir, args)
+    }
+
+    #[test]
+    fn process_one_skips_a_name_another_worker_is_still_writing() {
+        // The race behind parallel inputs that map to one output name: the
+        // first worker's file exists but isn't finished. An `exists()` check
+        // made before it appeared would let both write.
+        let (_dir, input, out_dir, args) = song_and_args(MP3, ConflictStrategy::Skip);
+        let planned = out_dir.join("song.mp3");
+        let _other_worker = OutputFile::create_new(&planned).unwrap().unwrap();
+
+        assert!(matches!(
+            process_one(&input, &args).unwrap(),
+            Outcome::Skipped(_)
+        ));
+        assert_eq!(std::fs::read(&planned).unwrap(), b"");
+    }
+
+    #[test]
+    fn process_one_renames_around_a_name_another_worker_is_still_writing() {
+        let (_dir, input, out_dir, args) = song_and_args(MP3, ConflictStrategy::Rename);
+        let _other_worker = OutputFile::create_new(&out_dir.join("song.mp3"))
+            .unwrap()
+            .unwrap();
+
+        match process_one(&input, &args).unwrap() {
+            Outcome::Written { path, .. } => {
+                assert_eq!(path, out_dir.join("song-1.mp3"));
+                assert_eq!(std::fs::read(&path).unwrap(), MP3);
+            }
+            _ => panic!("expected song-1.mp3 to be written"),
+        }
+    }
+
+    #[test]
+    fn process_one_overwrite_replaces_the_existing_output() {
+        let (_dir, input, out_dir, args) = song_and_args(MP3, ConflictStrategy::Overwrite);
+        let planned = out_dir.join("song.mp3");
+        std::fs::write(&planned, b"stale").unwrap();
+
+        assert!(matches!(
+            process_one(&input, &args).unwrap(),
+            Outcome::Written { .. }
+        ));
+        assert_eq!(std::fs::read(&planned).unwrap(), MP3);
+        assert_eq!(
+            std::fs::read_dir(&out_dir).unwrap().count(),
+            1,
+            "no temporary file left behind"
+        );
+    }
+
+    #[test]
+    fn process_one_tags_the_output_through_its_open_handle() {
+        // Smallest FLAC lofty accepts: the magic plus a STREAMINFO block
+        // (44.1 kHz, stereo, 16-bit).
+        let mut flac = b"fLaC\x80\x00\x00\x22".to_vec();
+        flac.extend_from_slice(&[0x10, 0x00, 0x10, 0x00, 0, 0, 0, 0, 0, 0]);
+        flac.extend_from_slice(&[0x0A, 0xC4, 0x42, 0xF0, 0, 0, 0, 0]);
+        flac.extend_from_slice(&[0u8; 16]);
+
+        let (_dir, input, out_dir, mut args) = song_and_args(&flac, ConflictStrategy::Skip);
+        args.no_tag = false;
+        // Same input again, now with a cover for the tagger to embed.
+        let cover = [0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F'];
+        write_ncm(&input, &flac, Some(&cover));
+
+        let Outcome::Written { path, .. } = process_one(&input, &args).unwrap() else {
+            panic!("expected the file to be written");
+        };
+        assert_eq!(path, out_dir.join("song.flac"));
+
+        use lofty::file::TaggedFileExt;
+        let tagged = lofty::read_from_path(&path).unwrap();
+        let tag = tagged.primary_tag().expect("tags were written");
+        assert_eq!(tag.pictures().len(), 1);
+        assert_eq!(tag.pictures()[0].data(), &cover[..]);
+    }
+
+    #[cfg(unix)]
+    mod symlinks {
+        use super::*;
+        use std::os::unix::fs::symlink;
+
+        /// Plant `out/song.mp3` -> `victim` holding "precious".
+        fn plant(out_dir: &Path) -> (PathBuf, PathBuf) {
+            let victim = out_dir.parent().unwrap().join("victim");
+            std::fs::write(&victim, b"precious").unwrap();
+            let link = out_dir.join("song.mp3");
+            symlink(&victim, &link).unwrap();
+            (link, victim)
+        }
+
+        #[test]
+        fn skip_does_not_write_through_a_planted_symlink() {
+            let (_dir, input, out_dir, args) = song_and_args(MP3, ConflictStrategy::Skip);
+            let (_link, victim) = plant(&out_dir);
+
+            assert!(matches!(
+                process_one(&input, &args).unwrap(),
+                Outcome::Skipped(_)
+            ));
+            assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
+        }
+
+        #[test]
+        fn skip_does_not_create_a_dangling_symlinks_target() {
+            let (dir, input, out_dir, args) = song_and_args(MP3, ConflictStrategy::Skip);
+            let target = dir.path().join("planted");
+            symlink(&target, out_dir.join("song.mp3")).unwrap();
+
+            assert!(matches!(
+                process_one(&input, &args).unwrap(),
+                Outcome::Skipped(_)
+            ));
+            assert!(!target.exists());
+        }
+
+        #[test]
+        fn rename_does_not_write_through_a_planted_symlink() {
+            let (_dir, input, out_dir, args) = song_and_args(MP3, ConflictStrategy::Rename);
+            let (_link, victim) = plant(&out_dir);
+
+            let Outcome::Written { path, .. } = process_one(&input, &args).unwrap() else {
+                panic!("expected song-1.mp3 to be written");
+            };
+            assert_eq!(path, out_dir.join("song-1.mp3"));
+            assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
+        }
+
+        #[test]
+        fn overwrite_replaces_a_planted_symlink_instead_of_following_it() {
+            let (_dir, input, out_dir, args) = song_and_args(MP3, ConflictStrategy::Overwrite);
+            let (link, victim) = plant(&out_dir);
+
+            assert!(matches!(
+                process_one(&input, &args).unwrap(),
+                Outcome::Written { .. }
+            ));
+            assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
+            assert!(std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_file());
+            assert_eq!(std::fs::read(&link).unwrap(), MP3);
+        }
+
+        #[test]
+        fn folder_cover_does_not_write_through_a_planted_symlink() {
+            let dir = tempfile::tempdir().unwrap();
+            let audio = dir.path().join("song.mp3");
+            std::fs::write(&audio, b"fake mp3").unwrap();
+            let victim = dir.path().join("victim");
+            std::fs::write(&victim, b"precious").unwrap();
+            let link = dir.path().join("cover.jpg");
+            symlink(&victim, &link).unwrap();
+
+            let cover = Cover {
+                mime: CoverMime::Jpeg,
+                data: b"jpeg-bytes".to_vec(),
+            };
+            write_cover_next_to(&audio, &cover).unwrap();
+
+            assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
+            assert_eq!(std::fs::read(&link).unwrap(), b"jpeg-bytes");
+        }
+
+        #[test]
+        fn dry_run_treats_a_dangling_symlink_as_taken() {
+            let dir = tempfile::tempdir().unwrap();
+            let link = dir.path().join("song.mp3");
+            symlink(dir.path().join("nowhere"), &link).unwrap();
+            assert!(matches!(
+                resolve_conflict(&link, ConflictStrategy::Skip).unwrap(),
+                ConflictOutcome::Skip
+            ));
+        }
     }
 
     // ---- write_cover_next_to ---------------------------------------------

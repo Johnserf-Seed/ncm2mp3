@@ -39,6 +39,8 @@ All multi-byte integers are little-endian. All offsets below are relative to the
 
 **Don't skip `cover_frame_len`.** Older clients always wrote `cover_frame_len == cover_len`, so many parsers (this one included, until [#3](https://github.com/Johnserf-Seed/ncm2mp3/issues/3)) lumped it into a 5-byte "gap" and started the audio right after the image. NetEase Cloud Music 3.x reserves a larger frame — often with `cover_len == 0` — and such a parser decrypts the padding as audio, which also shifts the key stream for everything after it, so the whole output is noise. Same bug and fix upstream: [taurusxin/ncmdump#26](https://github.com/taurusxin/ncmdump/issues/26).
 
+**Every length field is untrusted.** The parser caps them per segment: 64 KiB for the key blob, 1 MiB for the metadata blob, 64 MiB for the cover image and the cover frame (`MAX_KEY_LEN`, `MAX_META_LEN`, `MAX_SEGMENT_LEN`). Real files need about 144 bytes, a few KiB and a few MiB. A segment's buffer also grows only as its bytes arrive, so a truncated file that declares a large segment can't make the parser allocate it.
+
 Implemented in [`crates/ncm-core/src/parser.rs`](../crates/ncm-core/src/parser.rs) and orchestrated by [`crates/ncm-core/src/decoder.rs`](../crates/ncm-core/src/decoder.rs).
 
 Constants for Magic, both AES keys, XOR masks, and prefix strings live in [`crates/ncm-core/src/format.rs`](../crates/ncm-core/src/format.rs).
@@ -189,8 +191,10 @@ src/
 ├── cli.rs        CliCommand enum + clap Command builder + ParsedArgs
 ├── i18n.rs       Strings struct, EN/ZH tables, Lang::detect_from_env, t()
 ├── info.rs       `info` subcommand (read-only inspection)
+├── output.rs     OutputFile — symlink-safe, race-free output file creation
 ├── pipeline.rs   decrypt pipeline (collect_inputs + process_one + rayon)
 ├── template.rs   filename template rendering (strfmt + sanitization)
+├── term.rs       escape control characters before printing outside text
 └── tagger.rs     lofty-based tag + cover writer
 ```
 
@@ -221,9 +225,10 @@ files.par_iter().for_each(|f| process_one(f, args))
         │         - fail if the audio head matches no known format
         │         - filter by --format
         │         - build output path (template or input stem; +folder?)
-        │         - conflict check
-        │         - stream decrypt to writer
-        │         - write tags via lofty
+        │         - claim the output file per --on-conflict (output.rs)
+        │         - stream decrypt into it
+        │         - write tags via lofty, through the same open handle
+        │         - commit (for --overwrite: rename the temp file into place)
         │         - if --folder: drop cover.jpg/.png next to audio
         ▼
 colored status line per outcome (✓ / · / ✗ / [dry-run])
@@ -253,6 +258,8 @@ Clap help text has to be known at `Command::build` time, so `main.rs` does a **p
 ## 7. Parallelism and safety
 
 - Rayon is used only for the outer loop over files. Inside `process_one`, everything is single-threaded.
+- Output files never go through `File::create` or `fs::write`, which follow a symlink at the destination. [`output.rs`](../crates/ncm-cli/src/output.rs) claims a name with an exclusive create (`O_CREAT | O_EXCL`), which fails on anything already there, a dangling symlink included. When two inputs map to the same output name, exactly one worker gets it, and the other skips or moves to the next `-N` name. `--overwrite` (and the `--folder` cover) writes a temporary file beside the target and renames it over the target, which replaces a symlink instead of following it.
+- Text from the file (title, artist, album) and file names are printed through [`term::printable`](../crates/ncm-cli/src/term.rs), which shows control characters as `\u{…}` instead of letting the terminal act on them.
 - `NcmStreamCipher` is `Send + Sync` because it only reads from its `S` box after construction — safe to share across threads in theory, but we actually construct one per file (cheap, ~1 KB of state).
 - The `OnceLock<&'static Strings>` in `i18n` is the only shared mutable state, and it's written exactly once at startup.
 

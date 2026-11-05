@@ -16,7 +16,9 @@ use walkdir::WalkDir;
 
 use crate::cli::CoverArgs;
 use crate::i18n::t;
+use crate::output::OutputFile;
 use crate::pipeline::has_ncm_extension;
+use crate::term::{printable, printable_path};
 
 pub fn run(args: &CoverArgs) -> Result<()> {
     let files = collect(&args.input, args.recursive)?;
@@ -31,7 +33,12 @@ pub fn run(args: &CoverArgs) -> Result<()> {
 
     for ncm_path in &files {
         if let Err(e) = extract_one(ncm_path, args) {
-            eprintln!("{} {}: {e:#}", style("✗").red().bold(), ncm_path.display());
+            eprintln!(
+                "{} {}: {}",
+                style("✗").red().bold(),
+                printable_path(ncm_path),
+                printable(&format!("{e:#}"))
+            );
         }
     }
     Ok(())
@@ -70,7 +77,7 @@ fn extract_one(ncm_path: &Path, args: &CoverArgs) -> Result<()> {
             "{} {}",
             style("·").yellow(),
             t().msg_cover_no_cover
-                .replace("{path}", &ncm_path.display().to_string())
+                .replace("{path}", &printable_path(ncm_path))
         );
         return Ok(());
     };
@@ -83,7 +90,7 @@ fn extract_one(ncm_path: &Path, args: &CoverArgs) -> Result<()> {
                 "{} {}",
                 style("·").yellow(),
                 t().msg_cover_unknown_mime
-                    .replace("{path}", &ncm_path.display().to_string())
+                    .replace("{path}", &printable_path(ncm_path))
             );
             return Ok(());
         }
@@ -106,26 +113,128 @@ fn extract_one(ncm_path: &Path, args: &CoverArgs) -> Result<()> {
     fs::create_dir_all(&parent)
         .with_context(|| format!("failed to create {}", parent.display()))?;
 
+    // Never write through a symlink at the destination (see `output`):
+    // without --overwrite, create the file only if nothing is there yet;
+    // with it, replace whatever is there.
     let out_path = parent.join(format!("{stem}.{ext}"));
-    if out_path.exists() && !args.overwrite {
+    let created = if args.overwrite {
+        OutputFile::replace(&out_path).map(Some)
+    } else {
+        OutputFile::create_new(&out_path)
+    };
+    let Some(output) =
+        created.with_context(|| format!("failed to create {}", out_path.display()))?
+    else {
         eprintln!(
             "{} {}  ({})",
             style("·").yellow(),
-            ncm_path.display(),
+            printable_path(ncm_path),
             t().msg_skipped_exists
-                .replace("{path}", &out_path.display().to_string())
+                .replace("{path}", &printable_path(&out_path))
         );
         return Ok(());
-    }
+    };
 
-    fs::write(&out_path, &cover.data)
+    output
+        .write_and_commit(&cover.data)
         .with_context(|| format!("failed to write {}", out_path.display()))?;
 
     eprintln!(
         "{} {}",
         style("✓").green().bold(),
         t().msg_cover_written
-            .replace("{path}", &out_path.display().to_string())
+            .replace("{path}", &printable_path(&out_path))
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testutil::write_ncm;
+
+    const JPEG: &[u8] = &[0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F'];
+    const MP3: &[u8] = b"ID3\x04\x00\x00\x00\x00\x00\x00 frames";
+
+    fn song_with_cover() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("song.ncm");
+        write_ncm(&input, MP3, Some(JPEG));
+        (dir, input)
+    }
+
+    fn args(input: &Path, overwrite: bool) -> CoverArgs {
+        CoverArgs {
+            input: input.to_path_buf(),
+            output: None,
+            recursive: false,
+            overwrite,
+        }
+    }
+
+    #[test]
+    fn writes_the_cover_next_to_the_input() {
+        let (dir, input) = song_with_cover();
+        extract_one(&input, &args(&input, false)).unwrap();
+        assert_eq!(fs::read(dir.path().join("song.jpg")).unwrap(), JPEG);
+    }
+
+    #[test]
+    fn keeps_an_existing_cover_without_overwrite() {
+        let (dir, input) = song_with_cover();
+        let out = dir.path().join("song.jpg");
+        fs::write(&out, b"mine").unwrap();
+        extract_one(&input, &args(&input, false)).unwrap();
+        assert_eq!(fs::read(&out).unwrap(), b"mine");
+    }
+
+    #[test]
+    fn overwrite_replaces_an_existing_cover() {
+        let (dir, input) = song_with_cover();
+        let out = dir.path().join("song.jpg");
+        fs::write(&out, b"mine").unwrap();
+        extract_one(&input, &args(&input, true)).unwrap();
+        assert_eq!(fs::read(&out).unwrap(), JPEG);
+    }
+
+    #[cfg(unix)]
+    mod symlinks {
+        use super::*;
+        use std::os::unix::fs::symlink;
+
+        fn plant(dir: &Path) -> (PathBuf, PathBuf) {
+            let victim = dir.join("victim");
+            fs::write(&victim, b"precious").unwrap();
+            let link = dir.join("song.jpg");
+            symlink(&victim, &link).unwrap();
+            (link, victim)
+        }
+
+        #[test]
+        fn does_not_write_through_a_planted_symlink() {
+            let (dir, input) = song_with_cover();
+            let (_link, victim) = plant(dir.path());
+            extract_one(&input, &args(&input, false)).unwrap();
+            assert_eq!(fs::read(&victim).unwrap(), b"precious");
+        }
+
+        #[test]
+        fn does_not_create_a_dangling_symlinks_target() {
+            let (dir, input) = song_with_cover();
+            let target = dir.path().join("planted");
+            symlink(&target, dir.path().join("song.jpg")).unwrap();
+            extract_one(&input, &args(&input, false)).unwrap();
+            assert!(!target.exists());
+        }
+
+        #[test]
+        fn overwrite_replaces_a_planted_symlink_instead_of_following_it() {
+            let (dir, input) = song_with_cover();
+            let (link, victim) = plant(dir.path());
+            extract_one(&input, &args(&input, true)).unwrap();
+            assert_eq!(fs::read(&victim).unwrap(), b"precious");
+            assert!(fs::symlink_metadata(&link).unwrap().file_type().is_file());
+            assert_eq!(fs::read(&link).unwrap(), JPEG);
+        }
+    }
 }

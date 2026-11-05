@@ -17,6 +17,7 @@ use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 use crate::cli::{Cli, ColorChoice, WatchArgs};
 use crate::i18n::t;
 use crate::pipeline::{has_ncm_extension, process_one, Outcome};
+use crate::term::{printable, printable_path};
 
 pub fn run(args: &WatchArgs) -> Result<()> {
     if !args.dir.exists() {
@@ -88,19 +89,29 @@ fn handle_file(path: &Path, cli: &Cli) {
             eprintln!(
                 "{} {} -> {}",
                 style("✓").green().bold(),
-                path.display(),
-                out.display()
+                printable_path(path),
+                printable_path(&out)
             );
         }
         Ok(Outcome::Skipped(reason)) => {
-            eprintln!("{} {}  ({reason})", style("·").yellow(), path.display());
+            eprintln!(
+                "{} {}  ({})",
+                style("·").yellow(),
+                printable_path(path),
+                printable(&reason)
+            );
         }
         Ok(Outcome::DryRun(_)) => {
             // Watch mode doesn't set dry_run, so this shouldn't fire —
             // but keep the match exhaustive.
         }
         Err(e) => {
-            eprintln!("{} {}: {e:#}", style("✗").red().bold(), path.display());
+            eprintln!(
+                "{} {}: {}",
+                style("✗").red().bold(),
+                printable_path(path),
+                printable(&format!("{e:#}"))
+            );
         }
     }
 }
