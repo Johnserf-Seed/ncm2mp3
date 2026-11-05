@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
@@ -162,6 +163,8 @@ pub fn build_command(s: &'static Strings) -> Command {
         // path-not-found error. With it, prefix typos route to the right
         // subcommand automatically. Substitution typos like `wath` (vs
         // `watch`) still fall through to the explicit suggester in main.rs.
+        // `build_command_for_args` turns this off when INPUT is an existing
+        // path, so a folder called `in` isn't read as `info`.
         .infer_subcommands(true)
         .arg(
             Arg::new("input")
@@ -417,6 +420,30 @@ pub fn build_command(s: &'static Strings) -> Command {
                         .value_parser(clap::builder::EnumValueParser::<Shell>::new()),
                 ),
         )
+}
+
+/// [`build_command`] for a concrete argv (`args[0]` is the program name, as
+/// with [`Command::get_matches_from`]).
+///
+/// Subcommand prefix inference is turned off when INPUT names a path that
+/// exists. Otherwise a folder called `in`, `w` or `cov` is read as `info`,
+/// `watch` or `cover`, and `ncm2mp3 in -o out` fails with "unexpected
+/// argument '-o'". Prefixes that aren't paths (`inf`, `comp`) still infer
+/// the subcommand. An exact subcommand name always wins: `./info` decrypts
+/// a folder named `info`.
+pub fn build_command_for_args(s: &'static Strings, args: &[OsString]) -> Command {
+    let cmd = build_command(s);
+    // Let clap find INPUT with inference off, so option values (`-o out`,
+    // `--format mp3`) are skipped exactly as in the real parse.
+    // `ignore_errors` keeps what was parsed before a bad argument, so that
+    // error is still reported against the decrypt usage.
+    let input_exists = cmd
+        .clone()
+        .infer_subcommands(false)
+        .ignore_errors(true)
+        .try_get_matches_from(args)
+        .is_ok_and(|m| m.get_one::<PathBuf>("input").is_some_and(|p| p.exists()));
+    cmd.infer_subcommands(!input_exists)
 }
 
 /// Dispatch parsed matches into the concrete command variant.

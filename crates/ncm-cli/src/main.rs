@@ -8,6 +8,7 @@ mod tagger;
 mod template;
 mod watch;
 
+use std::ffi::OsString;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -24,9 +25,11 @@ fn main() -> Result<()> {
     i18n::init(lang.strings());
 
     // Build the clap command once; we reuse the same instance both for
-    // parsing argv and for generating shell completions.
-    let mut cmd = cli::build_command(lang.strings());
-    let matches = cmd.clone().get_matches();
+    // parsing argv and for generating shell completions. It's built for
+    // this argv so an existing path like `in/` isn't taken for `info`.
+    let args: Vec<OsString> = std::env::args_os().collect();
+    let mut cmd = cli::build_command_for_args(lang.strings(), &args);
+    let matches = cmd.clone().get_matches_from(&args);
     let command = cli::parse(&matches, lang)?;
 
     // Subcommand-typo correction. clap's built-in `suggestions` feature

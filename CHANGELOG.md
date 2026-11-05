@@ -20,6 +20,15 @@
   `ncm2mp3.exe`；`update-dist.yml` 同步新版本时也会写入这两个
   `extract_dir`。该问题自 Scoop 清单加入起就存在。之前安装失败的，
   重新执行 `scoop install` 即可，Scoop 会自动清理失败的安装。
+- **与子命令前缀同名的目录被当成子命令**
+  （[#10](https://github.com/Johnserf-Seed/ncm2mp3/pull/10)）：0.3.1 起，
+  子命令的唯一前缀会被补全成完整名字，所以当前目录下有 `in/` 时，
+  `ncm2mp3 in -o out` 会被解析成 `ncm2mp3 info …`，然后报错
+  `error: unexpected argument '-o' found`。名为 `w`、`cov`、`comp`、
+  `h` 的目录同理（分别对应 `watch`、`cover`、`completion`、`help`）。
+  现在第一个位置参数只要是已存在的路径，就当作输入路径解密；不是路径的
+  前缀（如 `inf`、`comp`）仍会补全成对应的子命令。完整的子命令名始终
+  优先，要解密名为 `info` 的目录请写 `./info`。
 
 ## [0.3.2] - 2026-10-04
 
